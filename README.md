@@ -91,6 +91,10 @@ uv run broad-book-site --host 127.0.0.1 --port 8765 --verbose
 uv run broad-book-site --skip-initial-build
 ```
 
+## License
+
+This repo follows the same license as the manuscript repo: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+
 ## Notes
 
 - HTML responses get a tiny live-reload snippet injected at serve time.
