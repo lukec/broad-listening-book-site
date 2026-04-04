@@ -1,0 +1,1887 @@
+#!/usr/bin/env python3
+"""
+Build a multilingual static web-book edition from the manuscript markdown.
+
+Default output:
+    html/
+      index.html
+      assets/
+      en/
+      ja/
+"""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+import os
+import re
+import shutil
+from dataclasses import dataclass
+from html.parser import HTMLParser
+from pathlib import Path
+
+import markdown
+
+SHAPE_UP_TYPEKIT_CSS = "https://use.typekit.net/xig7qap.css"
+DESIGN_CREDIT_COMMENT = (
+    "<!-- Design inspiration: Basecamp's Shape Up web book "
+    "(https://basecamp.com/shapeup). -->"
+)
+LANDING_IMAGE = "images/01_broadlistening.png"
+SOURCE_REPO_URL = "https://github.com/lukec/broad-listening-book"
+LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
+TRANSLATION_NOTE_TEXT = (
+    "Translation note (English edition): Original Japanese authorship is preserved "
+    "throughout this book. Any errors in the English translation are the translator’s own."
+)
+
+
+@dataclass(frozen=True)
+class LanguageConfig:
+    code: str
+    lang_attr: str
+    title: str
+    subtitle: str
+    author: str
+    source_root: Path
+    order_file: Path
+    label: str
+    edition_label: str
+    body_class: str
+    part_labels: list[tuple[tuple[int, int], str]]
+
+
+@dataclass
+class Chapter:
+    source_rel: str
+    output_rel: str
+    canonical_rel: str
+    part_label: str
+    chapter_label: str
+    title: str
+    headings: list[tuple[str, str]]
+    body_html: str
+
+
+LANGUAGE_UI = {
+    "en": {
+        "all_languages": "← All languages",
+        "sections_on_page": "Sections on this page",
+        "chapters_in_language": "Chapters in this language",
+        "draft_badge": "Pre-release Draft",
+        "start_reading": "Start reading →",
+        "previous_chapter": "← Previous chapter",
+        "next_chapter": "Next chapter →",
+        "next_prefix": "Next:",
+        "back_to_contents": "Back to contents →",
+        "language_switch": "Languages",
+        "chapter": "Chapter",
+        "column": "Column",
+        "preface": "Preface",
+        "endorsement": "Endorsement",
+        "appendix": "Appendix",
+        "choose_language": "Choose a language",
+        "choose_language_subtitle": "One web edition for every language of the book.",
+        "open_edition": "Open edition",
+        "site_suffix": "English Web Edition",
+    },
+    "ja": {
+        "all_languages": "← 言語一覧へ",
+        "sections_on_page": "このページの節",
+        "chapters_in_language": "この言語の章一覧",
+        "draft_badge": "先行公開ドラフト",
+        "start_reading": "読み始める →",
+        "previous_chapter": "← 前の章",
+        "next_chapter": "次の章 →",
+        "next_prefix": "次:",
+        "back_to_contents": "目次へ戻る →",
+        "language_switch": "言語",
+        "chapter": "第",
+        "column": "コラム",
+        "preface": "序文",
+        "endorsement": "推薦文",
+        "appendix": "付録",
+        "choose_language": "言語を選択",
+        "choose_language_subtitle": "この書籍を同じサイトで多言語公開します。",
+        "open_edition": "版を開く",
+        "site_suffix": "日本語版Webブック",
+    },
+}
+
+STYLE_CSS = """
+:root {
+  --color-text: 0, 0, 0;
+  --color-background: 255, 255, 255;
+  --color-link: 0, 0, 0;
+  --type-base: calc(1.6em + 0.5vw);
+  --type-xxxx-small: 30%;
+  --type-xxx-small: 55%;
+  --type-xx-small: 65%;
+  --type-x-small: 75%;
+  --type-small: 85%;
+  --type-medium: 100%;
+  --type-large: 120%;
+  --type-x-large: 160%;
+  --type-xx-large: 200%;
+  --type-xxx-large: 300%;
+  --type-xxxx-large: 400%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+::selection {
+  color: rgb(var(--color-background));
+  background-color: rgb(var(--color-text));
+}
+
+html {
+  font-size: 16px;
+  scroll-behavior: smooth;
+}
+
+@supports(display: grid) {
+  html {
+    font-size: 10px;
+  }
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: ff-meta-serif-web-pro, serif;
+  font-size: var(--type-base);
+  color: rgb(var(--color-text));
+  background-color: rgb(var(--color-background));
+  overflow-x: hidden;
+}
+
+.draft-ribbon {
+  position: fixed;
+  top: 1.4rem;
+  right: 1.4rem;
+  z-index: 30;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.78rem 1.3rem;
+  border: 0.22rem solid #3b2b34;
+  border-radius: 1.9rem;
+  background:
+    radial-gradient(circle at 18% 28%, rgba(255, 255, 255, 0.95) 0 0.45rem, transparent 0.5rem),
+    radial-gradient(circle at 82% 72%, rgba(255, 255, 255, 0.8) 0 0.3rem, transparent 0.35rem),
+    linear-gradient(135deg, #ffd6ea 0%, #ffe7f4 48%, #fff0bf 100%);
+  color: #2f2229;
+  font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
+  font-size: 1.3rem;
+  font-weight: bold;
+  letter-spacing: 0.04em;
+  box-shadow:
+    0.2rem 0.2rem 0 #fff8fb,
+    0.55rem 0.55rem 0 #ff9fc4;
+  transform: rotate(5deg);
+}
+
+.draft-ribbon::before,
+.draft-ribbon::after {
+  content: "o";
+  position: absolute;
+  color: #ff7eb0;
+  font-family: Georgia, serif;
+  font-size: 1.3rem;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.draft-ribbon::before {
+  top: -0.45rem;
+  left: 0.95rem;
+}
+
+.draft-ribbon::after {
+  right: 1.05rem;
+  bottom: -0.5rem;
+}
+
+.draft-ribbon__icon {
+  display: inline-flex;
+  width: 1.45rem;
+  height: 1.45rem;
+  flex: 0 0 auto;
+}
+
+.draft-ribbon__icon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.draft-ribbon__icon path {
+  fill: #2f2229;
+}
+
+.draft-ribbon__icon--heart {
+  width: 1.25rem;
+  height: 1.25rem;
+  transform: rotate(-8deg);
+}
+
+.draft-ribbon__text {
+  position: relative;
+  top: 0.02rem;
+}
+
+body.lang-ja {
+  font-family:
+    ff-meta-serif-web-pro,
+    "Hiragino Mincho ProN",
+    "Yu Mincho",
+    "Noto Serif JP",
+    serif;
+}
+
+a {
+  color: rgb(var(--color-link));
+}
+
+a:hover,
+a:visited {
+  color: rgb(var(--color-link));
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  margin: 1.5em 0 0 0;
+  padding: 0;
+  font-size: var(--type-large);
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: var(--type-xx-large);
+}
+
+h2 {
+  font-size: var(--type-x-large);
+}
+
+h3 {
+  margin-bottom: -0.25em;
+}
+
+h4 {
+  font-size: var(--type-small);
+  margin-top: 1.25em;
+}
+
+p {
+  margin: 1em 0 0 0;
+  font-size: var(--type-medium);
+  line-height: 1.5;
+}
+
+ul,
+ol {
+  margin: 1em 0 0 1em;
+  padding: 0;
+  line-height: 1.5;
+}
+
+hr {
+  height: 0;
+  margin: 3em 0;
+  border: 0;
+  border-top: 0.1rem solid rgb(var(--color-text));
+}
+
+blockquote {
+  margin: 1em 0 0 0;
+  padding: 0 0 0 1em;
+  border-left: 0.2rem solid rgb(var(--color-text));
+  font-style: italic;
+}
+
+code {
+  position: relative;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.2rem;
+  background-color: rgba(var(--color-link), 0.075);
+  font-size: var(--type-x-small);
+  font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, Courier, monospace;
+}
+
+pre {
+  overflow-x: auto;
+}
+
+pre code {
+  display: block;
+  padding: 1.25rem;
+}
+
+img {
+  max-width: 100%;
+  border-radius: 1rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.25em 0 0 0;
+  font-size: var(--type-small);
+}
+
+th,
+td {
+  padding: 0.7em 0.9em;
+  border: 0.1rem solid rgba(0, 0, 0, 0.16);
+  text-align: left;
+  vertical-align: top;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0 0 0 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5em 0.75em;
+  border: 0.2rem solid rgb(var(--color-link));
+  background-color: rgb(var(--color-link));
+  color: rgb(var(--color-background));
+  border-radius: 1.25em;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: bold;
+  line-height: 1.25;
+  text-decoration: none;
+}
+
+.button:hover,
+.button:visited {
+  color: rgb(var(--color-background));
+}
+
+.button--ghost {
+  background-color: transparent;
+  color: rgb(var(--color-text));
+}
+
+.button--ghost:hover,
+.button--ghost:visited {
+  color: rgb(var(--color-text));
+}
+
+.root {
+  width: min(88rem, calc(100vw - 3rem));
+  margin: 0 auto;
+  padding: 1.5em 0 4em;
+}
+
+.root__main {
+  max-width: 64rem;
+}
+
+.root__title {
+  margin: 0;
+  font-size: var(--type-xxx-large);
+  line-height: 1.05;
+}
+
+.root__subtitle {
+  margin: 0;
+  font-size: var(--type-xx-large);
+  line-height: 1.15;
+}
+
+.root__languages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1em;
+  margin-top: 1.75em;
+}
+
+.root__language {
+  margin: 0;
+}
+
+.root__notes {
+  margin-top: 4em;
+  padding-top: 1.25em;
+  border-top: 0.1rem solid rgb(var(--color-text));
+  max-width: 56rem;
+}
+
+.root__notes-title {
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3rem;
+  font-size: var(--type-xx-small);
+}
+
+.root__notes p {
+  font-size: var(--type-small);
+}
+
+.wb {
+  width: 100%;
+  margin: 0 auto;
+  padding: 1.5em;
+  display: grid;
+  grid-template-areas: 'header' 'sidebar' 'content';
+  grid-template-columns: auto;
+}
+
+.intro {
+  grid-area: sidebar;
+}
+
+.intro__content {
+  position: relative;
+}
+
+.intro__book-title {
+  margin: 0 0 2em 0;
+}
+
+.intro__book-title--compact {
+  white-space: nowrap;
+  font-size: var(--type-small) !important;
+  padding: 0.5em 1em !important;
+}
+
+.intro__content--sticky {
+  position: sticky;
+  top: 2em;
+}
+
+.intro__utility {
+  margin: 0.85em 0 0 0;
+}
+
+.intro__back {
+  margin: 0;
+  font-size: var(--type-small);
+}
+
+.intro__masthead {
+  margin: 2em 0 0 0;
+  padding: 0.5em 0 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3rem;
+  font-size: var(--type-xx-small);
+}
+
+.intro__title {
+  margin: 0.58em 0 0 0;
+  font-size: var(--type-xx-large);
+  line-height: 1.05;
+}
+
+.intro__title a {
+  text-decoration: none;
+}
+
+.lang-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5em;
+  margin: 0.75em 0 0 0;
+  font-size: var(--type-x-small);
+}
+
+.lang-switch a {
+  text-decoration: none;
+}
+
+.lang-switch__current {
+  font-weight: bold;
+  text-decoration: underline;
+}
+
+.intro__sections {
+  display: none;
+  margin: 0.5em 0 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.intro__sidebar-title {
+  margin: 0.55em 0 0 0;
+  font-size: var(--type-large);
+  line-height: 1.12;
+}
+
+.intro__sidebar-title a {
+  text-decoration: none;
+}
+
+.intro__section {
+  margin: 0.28em 0 0 0;
+  font-size: var(--type-small);
+  font-style: italic;
+}
+
+.intro__section a {
+  text-decoration: none;
+}
+
+.intro__section a.is-active {
+  text-decoration: underline;
+}
+
+.intro__next {
+  display: none;
+  margin: 1.25em 0 0 0;
+  font-size: var(--type-small);
+}
+
+.intro__next a {
+  text-decoration: none;
+}
+
+.content {
+  margin: 0;
+  padding: 0;
+  grid-area: content;
+  position: relative;
+}
+
+.landing-image {
+  display: block;
+  width: min(100%, 66rem);
+  margin: 3em 0 1em 0;
+}
+
+.landing-title {
+  margin: 0;
+  font-size: var(--type-xxx-large);
+  line-height: 1.1;
+}
+
+.landing-subtitle {
+  margin: 0;
+  font-size: var(--type-xx-large);
+  line-height: 1.2;
+}
+
+.landing-author {
+  margin: 0;
+  font-size: var(--type-small);
+  font-style: italic;
+}
+
+.toc-part + .toc-part {
+  margin-top: 0;
+}
+
+.toc-part__title {
+  display: block;
+  margin: 2em 0 0 0;
+  padding: 0.5em 0 0 0;
+  border-top: 0.1rem solid rgb(var(--color-text));
+}
+
+.toc-part__number {
+  margin: 3em 0 0 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3rem;
+  font-size: var(--type-xx-small);
+}
+
+.toc-chapters {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.toc-chapter {
+  margin: 1em 0 1em 0;
+  padding: 0 3em 0 0;
+}
+
+.toc-chapter__title {
+  margin: 0;
+  font-size: var(--type-large);
+}
+
+.toc-chapter__title a {
+  text-decoration: none;
+}
+
+.toc-sections {
+  margin: 0.5em 0 0 0;
+  padding: 0 0 0 0.5em;
+  list-style: none;
+  border-left: 0.1rem solid rgb(var(--color-link));
+}
+
+.toc-sections li {
+  margin: 0.2em 0 0;
+  font-size: var(--type-small);
+  font-style: italic;
+}
+
+.chapter h1 {
+  margin: 0;
+  font-size: var(--type-xx-large);
+}
+
+.chapter__header {
+  max-width: 46em;
+  margin: 0 0 1.35em 0;
+}
+
+.chapter__label {
+  margin: 0 0 0.5em 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3rem;
+  font-size: var(--type-xx-small);
+}
+
+.chapter__title {
+  margin: 0;
+  font-size: var(--type-xx-large);
+  line-height: 1.05;
+}
+
+.chapter__subtitle {
+  margin: 0.35em 0 0 0;
+  font-size: var(--type-large);
+  line-height: 1.2;
+}
+
+.chapter h2 {
+  margin-top: 1.6em;
+}
+
+.chapter h3 {
+  margin-top: 1.3em;
+}
+
+.chapter p,
+.chapter ul,
+.chapter ol,
+.chapter blockquote,
+.chapter pre,
+.chapter table,
+.chapter img {
+  max-width: 46em;
+}
+
+.chapter > :first-child {
+  margin-top: 0;
+}
+
+.translator-credit,
+.translator-note {
+  max-width: 46em;
+  color: rgba(0, 0, 0, 0.5);
+}
+
+.translator-credit {
+  margin-top: 0.45em;
+  font-size: var(--type-xx-small);
+  letter-spacing: 0.015em;
+}
+
+.translator-note {
+  margin-top: 0.35em;
+  font-size: var(--type-xxx-small);
+  line-height: 1.4;
+}
+
+.translator-note em {
+  font-style: normal;
+}
+
+.chapter sup {
+  font-size: 0.72em;
+  line-height: 0;
+  vertical-align: super;
+}
+
+.chapter .footnote-ref {
+  display: inline;
+  margin-left: 0.08em;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 1em;
+  font-weight: normal;
+  line-height: 1;
+  text-decoration: none;
+}
+
+.chapter .footnote-ref:hover {
+  text-decoration: underline;
+}
+
+.chapter .footnote {
+  max-width: 46em;
+  margin-top: 2.2em;
+  padding-top: 1.1em;
+  border-top: 0.1rem solid rgba(0, 0, 0, 0.22);
+  font-size: var(--type-x-small);
+}
+
+.chapter .footnote hr {
+  display: none;
+}
+
+.chapter .footnote ol {
+  margin: 0.4em 0 0 1.3em;
+}
+
+.chapter .footnote li + li {
+  margin-top: 0.5em;
+}
+
+.chapter .footnote p {
+  margin: 0;
+  line-height: 1.35;
+}
+
+.chapter .footnote-backref {
+  margin-left: 0.35em;
+  text-decoration: none;
+}
+
+[id^="fn:"],
+[id^="fnref:"] {
+  scroll-margin-top: 7rem;
+}
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1em;
+  margin: 0;
+  padding: 1em 0 0 0;
+}
+
+.pagination__spacer {
+  flex: 1 1 auto;
+}
+
+.mobile-rail {
+  margin-bottom: 2em;
+}
+
+.mobile-rail .intro__book-title {
+  margin: 0;
+}
+
+.mobile-rail .intro__masthead {
+  margin-top: 1.5em;
+}
+
+.mobile-rail .intro__masthead:first-child {
+  margin-top: 0;
+}
+
+.mobile-rail .intro__sections {
+  display: block;
+}
+
+@media screen and (min-width: 50em) {
+  :root {
+    --type-base: calc(0.9em + 0.9vw);
+  }
+
+  .wb {
+    margin: 0;
+    padding: 2em;
+    grid-template-areas: 'header header' 'sidebar content';
+    grid-template-columns: 0.85fr 2.5fr;
+  }
+
+  .intro__book-title {
+    margin: 0;
+  }
+
+  .intro__sections {
+    display: block;
+  }
+
+  .content {
+    padding: 2.65em 6em 0 3.5em;
+  }
+
+  .intro__content {
+    top: 2.5em;
+    text-align: right;
+  }
+
+  .intro__utility {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+  }
+
+  .lang-switch {
+    justify-content: flex-end;
+  }
+
+  .intro__next {
+    display: block;
+  }
+
+  .mobile-rail {
+    display: none;
+  }
+}
+
+@media screen and (min-width: 100em) {
+  :root {
+    --type-base: 2.75em;
+  }
+
+  .wb,
+  .root {
+    max-width: 250rem;
+  }
+}
+
+@media (max-width: 960px) {
+  :root {
+    --type-base: 1.85rem;
+  }
+
+  html {
+    font-size: 10px;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .draft-ribbon {
+    top: 0.8rem;
+    right: 0.8rem;
+    padding: 0.6rem 1rem;
+    font-size: 1.1rem;
+    box-shadow:
+      0.18rem 0.18rem 0 #fff8fb,
+      0.38rem 0.38rem 0 #ff9fc4;
+  }
+
+  .root {
+    width: auto;
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 1.25em 1.2em 3em;
+  }
+
+  .wb {
+    width: 100%;
+    max-width: 64rem;
+    margin: 0 auto;
+    padding: 1.25em 1.2em 3em;
+  }
+
+  .intro {
+    display: none;
+  }
+
+  .content {
+    width: 100%;
+    min-width: 0;
+    padding: 0;
+  }
+
+  .mobile-rail {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .landing-image,
+  .chapter img,
+  .chapter p,
+  .chapter ul,
+  .chapter ol,
+  .chapter blockquote,
+  .chapter pre,
+  .chapter table,
+  .chapter__header,
+  .translator-credit,
+  .translator-note {
+    max-width: 100%;
+  }
+
+  .chapter table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .chapter pre {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toc-chapter {
+    padding-right: 0;
+  }
+
+  .intro__book-title--compact,
+  .button {
+    white-space: normal;
+  }
+
+  .pagination {
+    justify-content: flex-start;
+  }
+
+  .root__languages {
+    flex-direction: column;
+  }
+}
+"""
+
+SCRIPT_JS = """
+const sectionLinks = [...document.querySelectorAll('[data-section-link]')];
+const headings = sectionLinks
+  .map((link) => {
+    const id = link.getAttribute('href')?.slice(1);
+    return id ? document.getElementById(id) : null;
+  })
+  .filter(Boolean);
+
+if (sectionLinks.length && headings.length && 'IntersectionObserver' in window) {
+  const activeById = new Map(sectionLinks.map((link) => [link.getAttribute('href')?.slice(1), link]));
+  const observer = new IntersectionObserver(
+    (entries) => {
+      const visible = entries
+        .filter((entry) => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+      if (!visible) return;
+
+      activeById.forEach((link) => link.classList.remove('is-active'));
+      const active = activeById.get(visible.target.id);
+      if (active) active.classList.add('is-active');
+    },
+    { rootMargin: '-18% 0px -60% 0px', threshold: [0.1, 0.4, 0.7] }
+  );
+
+  headings.forEach((heading) => observer.observe(heading));
+}
+"""
+
+
+def load_order_file(order_file: Path) -> list[str]:
+    files: list[str] = []
+    with order_file.open("r", encoding="utf-8") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or re.match(r"^\[.+\]$", line):
+                continue
+            files.append(line)
+    return files
+
+
+def load_path_map(en_root: Path) -> dict[str, str]:
+    path_map_file = en_root / "metadata" / "path_map.json"
+    if not path_map_file.exists():
+        return {}
+    return json.loads(path_map_file.read_text(encoding="utf-8"))
+
+
+def reverse_path_map(path_map: dict[str, str]) -> dict[str, str]:
+    return {target: source for source, target in path_map.items()}
+
+
+def strip_todo_markdown(md_text: str) -> str:
+    # Keep editorial TODOs in the manuscript source, but omit them from the web edition.
+    cleaned = re.sub(r"<!--.*?(?:TODO|MEMO).*?-->\s*", "", md_text, flags=re.DOTALL)
+    lines = []
+    for line in cleaned.splitlines():
+        if re.match(r"^\s*(?:TODO|MEMO)[:：].*$", line):
+            continue
+        line = re.sub(r"\s*\((?:TODO|MEMO)[:：].*?\)", "", line)
+        line = re.sub(r"(?:\s+in\s+|\s*)TODO:[^.!?。\n]*(?:[.!?。])?", "", line)
+        line = line.replace("TODO chapter", "corresponding chapter")
+        line = line.replace("TODO章", "該当章")
+        line = re.sub(r"\s{2,}", " ", line).rstrip()
+        lines.append(line)
+    return "\n".join(lines).strip() + "\n"
+
+
+def render_markdown(md_text: str) -> str:
+    md = markdown.Markdown(
+        extensions=["tables", "fenced_code", "footnotes", "toc", "sane_lists"],
+        extension_configs={"toc": {"permalink": False}},
+    )
+    return linkify_html(md.convert(md_text))
+
+
+URL_RE = re.compile(r"https?://[^\s<]+")
+TRAILING_PUNCTUATION = ".,;:!?)]"
+NO_LINKIFY_TAGS = {"a", "code", "pre", "script", "style"}
+
+
+def trim_trailing_punctuation(url: str) -> tuple[str, str]:
+    trailing = ""
+    while url and url[-1] in TRAILING_PUNCTUATION:
+        ch = url[-1]
+        if ch == ")" and url.count("(") >= url.count(")"):
+            break
+        trailing = ch + trailing
+        url = url[:-1]
+    return url, trailing
+
+
+def linkify_text(text: str) -> str:
+    parts: list[str] = []
+    cursor = 0
+    for match in URL_RE.finditer(text):
+        start, end = match.span()
+        url = match.group(0)
+        clean_url, trailing = trim_trailing_punctuation(url)
+        if not clean_url:
+            continue
+        parts.append(text[cursor:start])
+        escaped_url = html.escape(clean_url, quote=True)
+        parts.append(f'<a href="{escaped_url}">{escaped_url}</a>')
+        parts.append(trailing)
+        cursor = end
+    parts.append(text[cursor:])
+    return "".join(parts)
+
+
+class LinkifyHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.output: list[str] = []
+        self.tag_stack: list[str] = []
+
+    def _attrs_to_text(self, attrs: list[tuple[str, str | None]]) -> str:
+        rendered = []
+        for key, value in attrs:
+            if value is None:
+                rendered.append(f" {key}")
+            else:
+                rendered.append(f' {key}="{html.escape(value, quote=True)}"')
+        return "".join(rendered)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.output.append(f"<{tag}{self._attrs_to_text(attrs)}>")
+        self.tag_stack.append(tag.lower())
+
+    def handle_endtag(self, tag: str) -> None:
+        self.output.append(f"</{tag}>")
+        if self.tag_stack:
+            self.tag_stack.pop()
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.output.append(f"<{tag}{self._attrs_to_text(attrs)} />")
+
+    def handle_data(self, data: str) -> None:
+        in_non_linkified_context = any(tag in NO_LINKIFY_TAGS for tag in self.tag_stack)
+        self.output.append(data if in_non_linkified_context else linkify_text(data))
+
+    def handle_entityref(self, name: str) -> None:
+        self.output.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.output.append(f"&#{name};")
+
+    def handle_comment(self, data: str) -> None:
+        self.output.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str) -> None:
+        self.output.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str) -> None:
+        self.output.append(f"<?{data}>")
+
+
+def linkify_html(html_text: str) -> str:
+    parser = LinkifyHTMLParser()
+    parser.feed(html_text)
+    parser.close()
+    return "".join(parser.output)
+
+
+def strip_tags(fragment: str) -> str:
+    return re.sub(r"<[^>]+>", "", fragment).strip()
+
+
+def first_heading(md_text: str) -> str:
+    for line in md_text.splitlines():
+        match = re.match(r"^(#{1,6})\s+(.*)$", line.strip())
+        if match:
+            return match.group(2).strip()
+    return "Untitled"
+
+
+def chapter_number(source_rel: str) -> int | None:
+    match = re.match(r"^(\d{2})_", Path(source_rel).name)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def part_label_for_file(source_rel: str, config: LanguageConfig) -> str:
+    number = chapter_number(source_rel)
+    if number is None:
+        return config.part_labels[1][1]
+    for (start, end), label in config.part_labels:
+        if start <= number <= end:
+            return label
+    return config.part_labels[1][1]
+
+
+def chapter_label_for_file(source_rel: str, title: str, config: LanguageConfig) -> str:
+    ui = LANGUAGE_UI[config.code]
+    if source_rel.startswith("column/"):
+        return ui["column"]
+
+    number = chapter_number(source_rel)
+    if number == 0:
+        if "audrey" in source_rel.lower():
+            return ui["endorsement"]
+        return ui["preface"]
+    if number == 99:
+        return ui["appendix"]
+    if number is None:
+        return ui["column"] if "column" in title.lower() else ui["chapter"]
+
+    if config.code == "ja":
+        return f"第{number}章"
+    return f"Chapter {number}"
+
+
+def output_html_rel(relative_markdown_path: str) -> str:
+    return str(Path(relative_markdown_path).with_suffix(".html").as_posix())
+
+
+def relative_href(from_rel: str, to_rel: str) -> str:
+    return os.path.relpath(to_rel, start=Path(from_rel).parent).replace(os.sep, "/")
+
+
+def fix_relative_assets(
+    html_text: str,
+    repo_root: Path,
+    source_root: Path,
+    source_path: Path,
+    output_path: Path,
+    markdown_map: dict[str, str],
+) -> str:
+    translated_sibling_root: Path | None = None
+    try:
+        translated_sibling_root = repo_root / source_path.relative_to(source_root).parent
+    except ValueError:
+        translated_sibling_root = None
+
+    def rewrite(match: re.Match[str]) -> str:
+        attr = match.group(1)
+        raw_target = match.group(2)
+        if raw_target.startswith(("http://", "https://", "mailto:", "#", "data:")):
+            return match.group(0)
+
+        target, sep, anchor = raw_target.partition("#")
+
+        if attr == "href" and target.endswith(".md"):
+            normalized = Path(target).as_posix()
+            if normalized in markdown_map:
+                return f'{attr}="{markdown_map[normalized]}{sep}{anchor}"'
+
+            local_target = (source_path.parent / target).resolve()
+            try:
+                local_rel = local_target.relative_to(source_root.resolve()).as_posix()
+            except ValueError:
+                local_rel = ""
+            if local_rel and local_rel in markdown_map:
+                return f'{attr}="{markdown_map[local_rel]}{sep}{anchor}"'
+
+        local_candidate = (source_path.parent / target).resolve()
+        translated_sibling_candidate = (
+            (translated_sibling_root / target).resolve()
+            if translated_sibling_root is not None
+            else None
+        )
+        fallback_candidate = (repo_root / target).resolve()
+        if local_candidate.exists():
+            resolved = local_candidate
+        elif translated_sibling_candidate is not None and translated_sibling_candidate.exists():
+            resolved = translated_sibling_candidate
+        else:
+            resolved = fallback_candidate
+        rewritten = (
+            os.path.relpath(resolved, start=output_path.parent.resolve()).replace(os.sep, "/")
+            if resolved.exists()
+            else target
+        )
+        return f'{attr}="{rewritten}{sep}{anchor}"'
+
+    return re.sub(r'(src|href)="([^"]+)"', rewrite, html_text)
+
+
+def extract_headings(html_text: str) -> list[tuple[str, str]]:
+    headings: list[tuple[str, str]] = []
+    for match in re.finditer(r"<h2 id=\"([^\"]+)\">(.*?)</h2>", html_text, flags=re.DOTALL):
+        headings.append((match.group(1), strip_tags(match.group(2))))
+    return headings
+
+
+def strip_leading_heading(html_text: str) -> str:
+    return re.sub(r"^\s*<h[1-2][^>]*>.*?</h[1-2]>\s*", "", html_text, count=1, flags=re.DOTALL)
+
+
+def soften_translator_meta(html_text: str) -> str:
+    note_html = f'<p class="translator-note"><em>{html.escape(TRANSLATION_NOTE_TEXT)}</em></p>'
+    html_text = re.sub(
+        r"<p>English translation by (.*?)</p>",
+        r'<p class="translator-credit">English translation by \1</p>',
+        html_text,
+        count=1,
+        flags=re.DOTALL,
+    )
+    html_text = re.sub(
+        r"<p><em>Translation note \(English edition\):.*?</em></p>",
+        note_html,
+        html_text,
+        flags=re.DOTALL,
+    )
+    if 'class="translator-credit"' in html_text and 'class="translator-note"' not in html_text:
+        html_text = re.sub(
+            r'(<p class="translator-credit">.*?</p>)',
+            rf"\1\n{note_html}",
+            html_text,
+            count=1,
+            flags=re.DOTALL,
+        )
+    html_text = re.sub(
+        r'(<p class="translator-note"><em>.*?</em></p>\s*)(<p class="translator-credit">.*?</p>)',
+        r"\2\n\1",
+        html_text,
+        count=1,
+        flags=re.DOTALL,
+    )
+    return html_text
+
+
+def sidebar_chapter_title(chapter: Chapter) -> str:
+    pattern = rf"^{re.escape(chapter.chapter_label)}(?:\s*[:：-]\s*|\s+)"
+    return re.sub(pattern, "", chapter.title, count=1).strip() or chapter.title
+
+
+def split_display_title(title_text: str) -> tuple[str, str]:
+    parts = re.split(r"\s*[—–]\s*|\s-\s", title_text, maxsplit=1)
+    if len(parts) == 2:
+        return parts[0].strip(), parts[1].strip()
+    return title_text, ""
+
+
+def sidebar_display_title(chapter: Chapter, config: LanguageConfig) -> str:
+    title_text = sidebar_chapter_title(chapter)
+    if config.code != "en":
+        return title_text
+    main_title, _ = split_display_title(title_text)
+    return main_title
+
+
+def sidebar_section_headings(chapter: Chapter) -> list[tuple[str, str]]:
+    headings = list(chapter.headings)
+    if headings and headings[0][1].strip() == sidebar_chapter_title(chapter):
+        return headings[1:]
+    return headings
+
+
+def chapter_link_label(chapter: Chapter) -> str:
+    if chapter.title.lower().startswith(chapter.chapter_label.lower()):
+        return chapter.title
+    return f"{chapter.chapter_label}: {chapter.title}"
+
+
+def build_chapters(
+    repo_root: Path,
+    output_root: Path,
+    config: LanguageConfig,
+    canonical_map: dict[str, str],
+) -> list[Chapter]:
+    files = load_order_file(config.order_file)
+    markdown_map = {relative_path: output_html_rel(relative_path) for relative_path in files}
+
+    chapters: list[Chapter] = []
+    current_part = config.part_labels[0][1]
+
+    for relative_path in files:
+        source_path = config.source_root / relative_path
+        if not source_path.exists() or source_path.suffix != ".md":
+            continue
+
+        output_rel = output_html_rel(relative_path)
+        output_path = output_root / config.code / output_rel
+        md_text = source_path.read_text(encoding="utf-8")
+        filtered_md_text = strip_todo_markdown(md_text)
+        title = first_heading(filtered_md_text)
+        number = chapter_number(relative_path)
+        if number is not None:
+            current_part = part_label_for_file(relative_path, config)
+
+        html_body = render_markdown(filtered_md_text)
+        if config.code == "en":
+            html_body = soften_translator_meta(html_body)
+        html_body = fix_relative_assets(
+            html_text=html_body,
+            repo_root=repo_root,
+            source_root=config.source_root,
+            source_path=source_path,
+            output_path=output_path,
+            markdown_map=markdown_map,
+        )
+
+        chapters.append(
+            Chapter(
+                source_rel=relative_path,
+                output_rel=output_rel,
+                canonical_rel=canonical_map.get(relative_path, relative_path),
+                part_label=current_part,
+                chapter_label=chapter_label_for_file(relative_path, title, config),
+                title=title,
+                headings=extract_headings(html_body),
+                body_html=html_body,
+            )
+        )
+
+    return chapters
+
+
+def build_language_targets(sites: dict[str, list[Chapter]]) -> dict[str, dict[str, str]]:
+    targets: dict[str, dict[str, str]] = {}
+    for lang_code, chapters in sites.items():
+        for chapter in chapters:
+            targets.setdefault(chapter.canonical_rel, {})[lang_code] = (
+                f"{lang_code}/{chapter.output_rel}"
+            )
+    return targets
+
+
+def render_language_switch(
+    current_page_rel: str,
+    current_lang: str,
+    configs: list[LanguageConfig],
+    language_targets: dict[str, dict[str, str]],
+    canonical_rel: str | None,
+) -> str:
+    parts = []
+    for config in configs:
+        if canonical_rel is None:
+            target = f"{config.code}/index.html"
+        else:
+            target = language_targets.get(canonical_rel, {}).get(config.code) or f"{config.code}/index.html"
+
+        if config.code == current_lang:
+            parts.append(f'<span class="lang-switch__current">{html.escape(config.label)}</span>')
+        else:
+            parts.append(
+                f'<a href="{relative_href(current_page_rel, target)}">{html.escape(config.label)}</a>'
+            )
+    return f'<div class="lang-switch">{" ".join(parts)}</div>'
+
+
+def page_template(
+    *,
+    title: str,
+    lang_attr: str,
+    assets_href: str,
+    body: str,
+    body_class: str,
+) -> str:
+    badge_label = (
+        LANGUAGE_UI["ja"]["draft_badge"]
+        if lang_attr == "ja"
+        else f'{LANGUAGE_UI["en"]["draft_badge"]} / {LANGUAGE_UI["ja"]["draft_badge"]}'
+    )
+    return f"""<!doctype html>
+<html lang="{lang_attr}">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{html.escape(title)}</title>
+    <meta name="description" content="Broad Listening web book">
+    <link rel="stylesheet" href="{SHAPE_UP_TYPEKIT_CSS}">
+    <link rel="stylesheet" href="{assets_href}">
+  </head>
+  <body class="{body_class}">
+    {DESIGN_CREDIT_COMMENT}
+    <div class="draft-ribbon" aria-label="{html.escape(badge_label)}">
+      <span class="draft-ribbon__icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 1.8l1.9 5.1 5.1 1.9-5.1 1.9-1.9 5.1-1.9-5.1-5.1-1.9 5.1-1.9L12 1.8zm6.6 12.8.9 2.5 2.5.9-2.5.9-.9 2.5-.9-2.5-2.5-.9 2.5-.9.9-2.5zm-12.7.8.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"/>
+        </svg>
+      </span>
+      <span class="draft-ribbon__text">{html.escape(badge_label)}</span>
+      <span class="draft-ribbon__icon draft-ribbon__icon--heart" aria-hidden="true">
+        <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 21.2l-1.4-1.3C5.2 15 2 12.1 2 8.5 2 5.9 4 4 6.5 4c1.4 0 2.9.7 3.8 1.9C11.3 4.7 12.8 4 14.2 4 16.8 4 18.8 5.9 18.8 8.5c0 3.6-3.2 6.5-8.6 11.4L12 21.2z"/>
+        </svg>
+      </span>
+    </div>
+    {body}
+    <script src="{assets_href.replace('book.css', 'book.js')}"></script>
+  </body>
+</html>
+"""
+
+
+def render_root_index(repo_root: Path, output_root: Path, configs: list[LanguageConfig]) -> str:
+    english = next(config for config in configs if config.code == "en")
+    image_href = os.path.relpath(repo_root / LANDING_IMAGE, start=output_root).replace(os.sep, "/")
+    buttons = []
+    for config in configs:
+        cta = "Start reading in English" if config.code == "en" else "日本語で読み始める"
+        buttons.append(
+            f"""
+        <p class="root__language"><a class="button" href="{config.code}/index.html">{html.escape(cta)}</a></p>
+"""
+        )
+
+    body = f"""
+    <div class="root">
+      <main class="root__main">
+        <img class="landing-image" src="{image_href}" alt="Broad listening diagram">
+        <h1 class="root__title">{html.escape(english.title)}</h1>
+        <p class="root__subtitle">{html.escape(english.subtitle)}</p>
+        <div class="root__languages">
+          {''.join(buttons)}
+        </div>
+        <section class="root__notes">
+          <h2 class="root__notes-title">With Thanks</h2>
+          <p>With gratitude to the <a href="https://dd2030.org/">Digital Democracy 2030 team</a> for creating and sharing the source material behind this web edition.</p>
+          <p>The manuscript and generated site code are available on <a href="{SOURCE_REPO_URL}">GitHub</a>, and this edition is published under the <a href="{LICENSE_URL}">CC BY 4.0</a> license.</p>
+        </section>
+      </main>
+    </div>
+"""
+    return page_template(
+        title="Broad Listening",
+        lang_attr="en",
+        assets_href="./assets/book.css",
+        body=body,
+        body_class="lang-en",
+    )
+
+
+def render_index(
+    *,
+    repo_root: Path,
+    output_root: Path,
+    config: LanguageConfig,
+    chapters: list[Chapter],
+    configs: list[LanguageConfig],
+    language_targets: dict[str, dict[str, str]],
+) -> str:
+    ui = LANGUAGE_UI[config.code]
+    image_href = os.path.relpath(repo_root / LANDING_IMAGE, start=output_root / config.code).replace(os.sep, "/")
+    current_page_rel = f"{config.code}/index.html"
+    grouped: list[tuple[str, list[Chapter]]] = []
+    for chapter in chapters:
+        if not grouped or grouped[-1][0] != chapter.part_label:
+            grouped.append((chapter.part_label, [chapter]))
+        else:
+            grouped[-1][1].append(chapter)
+
+    parts = []
+    for part_label, part_chapters in grouped:
+        items = []
+        for chapter in part_chapters:
+            sections = "".join(
+                f'<li><a href="{chapter.output_rel}#{heading_id}">{html.escape(label)}</a></li>'
+                for heading_id, label in chapter.headings[:8]
+            )
+            chapter_number_html = (
+                f'<p class="toc-part__number">{html.escape(chapter.chapter_label)}</p>'
+                if chapter.chapter_label not in {
+                    ui["preface"],
+                    ui["endorsement"],
+                    ui["column"],
+                    ui["appendix"],
+                }
+                else ""
+            )
+            items.append(
+                f"""
+        <li class="toc-chapter">
+          {chapter_number_html}
+          <h3 class="toc-chapter__title"><a href="{chapter.output_rel}">{html.escape(chapter.title)}</a></h3>
+          {"<ul class=\"toc-sections\">" + sections + "</ul>" if sections else ""}
+        </li>
+"""
+            )
+
+        title_class = "toc-part__title"
+        if part_label == config.part_labels[0][1]:
+            title_class += " sr-only"
+        parts.append(
+            f"""
+      <section class="toc-part">
+        <h2 class="{title_class}">{html.escape(part_label)}</h2>
+        <ul class="toc-chapters">
+          {''.join(items)}
+        </ul>
+      </section>
+"""
+        )
+
+    body = f"""
+    <main class="wb">
+      <section class="intro">
+        <div class="intro__content">
+          <p class="intro__back"><a href="../index.html"><em>{html.escape(ui["all_languages"])}</em></a></p>
+        </div>
+      </section>
+
+      <section class="content">
+        {render_language_switch(current_page_rel, config.code, configs, language_targets, None)}
+        <img class="landing-image" src="{image_href}" alt="Broad listening diagram">
+        <h1 class="landing-title">{html.escape(config.title)}</h1>
+        <p class="landing-subtitle">{config.subtitle}</p>
+        <p class="landing-author"><em>{html.escape(config.author)}</em></p>
+        <p><a class="button" href="{chapters[0].output_rel}">{html.escape(ui["start_reading"])}</a></p>
+        <hr>
+        {''.join(parts)}
+      </section>
+    </main>
+"""
+    assets_href = relative_href(current_page_rel, "assets/book.css")
+    return page_template(
+        title=f"{config.title} | {ui['site_suffix']}",
+        lang_attr=config.lang_attr,
+        assets_href=assets_href,
+        body=body,
+        body_class=config.body_class,
+    )
+
+
+def render_sidebar(
+    *,
+    current_page_rel: str,
+    config: LanguageConfig,
+    configs: list[LanguageConfig],
+    chapter: Chapter,
+    language_targets: dict[str, dict[str, str]],
+    next_href: str,
+    next_title: str,
+) -> str:
+    ui = LANGUAGE_UI[config.code]
+    headings = sidebar_section_headings(chapter)
+    section_items = "".join(
+        f'<li class="intro__section"><a data-section-link href="#{heading_id}">{html.escape(label)}</a></li>'
+        for heading_id, label in headings
+    )
+    title_text = sidebar_display_title(chapter, config)
+    sidebar_next = (
+        f'<p class="intro__next"><a href="{next_href}">{html.escape(ui["next_prefix"])} {html.escape(next_title)}</a></p>'
+        if next_href and next_title
+        else ""
+    )
+    sidebar_title = (
+        f'<h2 class="intro__sidebar-title"><a href="{relative_href(current_page_rel, current_page_rel)}">{html.escape(title_text)}</a></h2>'
+        if config.code == "en" and title_text != sidebar_chapter_title(chapter)
+        else ""
+    )
+
+    return f"""
+      <aside class="intro">
+        <div class="intro__content intro__content--sticky">
+          <a class="intro__book-title button intro__book-title--compact" href="{relative_href(current_page_rel, f"{config.code}/index.html")}">{html.escape(config.title)}</a>
+          <div class="intro__utility">
+            <p class="intro__back"><a href="{relative_href(current_page_rel, 'index.html')}"><em>{html.escape(LANGUAGE_UI[config.code]["all_languages"])}</em></a></p>
+            {render_language_switch(current_page_rel, config.code, configs, language_targets, chapter.canonical_rel)}
+          </div>
+          <p class="intro__masthead">{html.escape(chapter.chapter_label)}</p>
+          {sidebar_title}
+          <ul class="intro__sections">{section_items}</ul>
+          {sidebar_next}
+        </div>
+      </aside>
+"""
+
+
+def render_mobile_rail(
+    *,
+    current_page_rel: str,
+    config: LanguageConfig,
+    configs: list[LanguageConfig],
+    chapter: Chapter,
+    language_targets: dict[str, dict[str, str]],
+) -> str:
+    headings = sidebar_section_headings(chapter)
+    section_items = "".join(
+        f'<li class="intro__section"><a data-section-link href="#{heading_id}">{html.escape(label)}</a></li>'
+        for heading_id, label in headings
+    )
+    title_text = sidebar_display_title(chapter, config)
+    sidebar_title = (
+        f'<h2 class="intro__sidebar-title"><a href="{relative_href(current_page_rel, current_page_rel)}">{html.escape(title_text)}</a></h2>'
+        if config.code == "en" and title_text != sidebar_chapter_title(chapter)
+        else ""
+    )
+
+    return f"""
+      <div class="mobile-rail">
+          <a class="intro__book-title button intro__book-title--compact" href="{relative_href(current_page_rel, f"{config.code}/index.html")}">{html.escape(config.title)}</a>
+          <div class="intro__utility">
+            <p class="intro__back"><a href="{relative_href(current_page_rel, 'index.html')}"><em>{html.escape(LANGUAGE_UI[config.code]["all_languages"])}</em></a></p>
+          </div>
+          {render_language_switch(current_page_rel, config.code, configs, language_targets, chapter.canonical_rel)}
+          <p class="intro__masthead">{html.escape(chapter.chapter_label)}</p>
+          {sidebar_title}
+          <ul class="intro__sections">{section_items}</ul>
+      </div>
+"""
+
+
+def render_chapter_page(
+    *,
+    current_page_rel: str,
+    config: LanguageConfig,
+    configs: list[LanguageConfig],
+    chapter: Chapter,
+    all_chapters: list[Chapter],
+    language_targets: dict[str, dict[str, str]],
+    previous_href: str,
+    next_href: str,
+) -> str:
+    ui = LANGUAGE_UI[config.code]
+    body_html = strip_leading_heading(chapter.body_html)
+    title_text = sidebar_chapter_title(chapter)
+    display_title, display_subtitle = split_display_title(title_text) if config.code == "en" else (title_text, "")
+    next_title = ""
+    if next_href:
+        next_title = sidebar_display_title(all_chapters[all_chapters.index(chapter) + 1], config)
+
+    footer_left = (
+        f'<a class="button button--ghost" href="{previous_href}">{html.escape(ui["previous_chapter"])}</a>'
+        if previous_href
+        else '<span class="pagination__spacer"></span>'
+    )
+    footer_right = (
+        f'<a class="button" href="{next_href}">{html.escape(ui["next_chapter"])}</a>'
+        if next_href
+        else f'<a class="button" href="{relative_href(current_page_rel, f"{config.code}/index.html")}">{html.escape(ui["back_to_contents"])}</a>'
+    )
+
+    body = f"""
+    <main class="wb">
+      {render_sidebar(
+          current_page_rel=current_page_rel,
+          config=config,
+          configs=configs,
+          chapter=chapter,
+          language_targets=language_targets,
+          next_href=next_href,
+          next_title=next_title,
+      )}
+      <section class="content chapter">
+        {render_mobile_rail(
+            current_page_rel=current_page_rel,
+            config=config,
+            configs=configs,
+            chapter=chapter,
+            language_targets=language_targets,
+        )}
+        <header class="chapter__header">
+          <p class="chapter__label">{html.escape(chapter.chapter_label)}</p>
+          <h1 class="chapter__title">{html.escape(display_title)}</h1>
+          {f'<p class="chapter__subtitle">{html.escape(display_subtitle)}</p>' if display_subtitle else ""}
+        </header>
+        {body_html}
+        <nav class="pagination">
+          {footer_left}
+          {footer_right}
+        </nav>
+      </section>
+    </main>
+"""
+    assets_href = relative_href(current_page_rel, "assets/book.css")
+    return page_template(
+        title=f"{chapter.title} | {config.title}",
+        lang_attr=config.lang_attr,
+        assets_href=assets_href,
+        body=body,
+        body_class=config.body_class,
+    )
+
+
+def sync_tree(source: Path, destination: Path) -> None:
+    if not source.exists():
+        return
+    for path in source.rglob("*"):
+        rel = path.relative_to(source)
+        target = destination / rel
+        if path.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, target)
+
+
+def build_site(repo_root: Path, output_root: Path) -> list[Path]:
+    output_root.mkdir(parents=True, exist_ok=True)
+    assets_dir = output_root / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    (assets_dir / "book.css").write_text(STYLE_CSS.strip() + "\n", encoding="utf-8")
+    (assets_dir / "book.js").write_text(SCRIPT_JS.strip() + "\n", encoding="utf-8")
+    sync_tree(repo_root / "images", output_root / "images")
+
+    en_root = repo_root / "en"
+    path_map = load_path_map(en_root)
+    reverse_map = reverse_path_map(path_map)
+
+    configs = [
+        LanguageConfig(
+            code="ja",
+            lang_attr="ja",
+            title="選挙を変えたブロードリスニング",
+            subtitle="生成AIが実現する民意の可視化と分析",
+            author="Digital Democracy 2030",
+            source_root=repo_root,
+            order_file=repo_root / "book_order.txt",
+            label="日本語",
+            edition_label="日本語版",
+            body_class="lang-ja",
+            part_labels=[
+                ((0, 0), "序文"),
+                ((1, 3), "第1部：ブロードリスニングとは何か"),
+                ((4, 11), "第2部：事例紹介"),
+                ((12, 13), "第3部：技術編"),
+                ((99, 99), "付録"),
+            ],
+        ),
+        LanguageConfig(
+            code="en",
+            lang_attr="en",
+            title="Broad Listening",
+            subtitle="Understanding Public Opinion at Scale",
+            author="by Digital Democracy 2030",
+            source_root=en_root,
+            order_file=en_root / "book_order.txt",
+            label="English",
+            edition_label="English edition",
+            body_class="lang-en",
+            part_labels=[
+                ((0, 0), "Preface"),
+                ((1, 3), "Part I: Concepts"),
+                ((4, 11), "Part II: Case Studies"),
+                ((12, 13), "Part III: Technology"),
+                ((99, 99), "Appendix"),
+            ],
+        ),
+    ]
+
+    sites: dict[str, list[Chapter]] = {}
+    for config in configs:
+        canonical_map = reverse_map if config.code == "en" else {}
+        sites[config.code] = build_chapters(repo_root, output_root, config, canonical_map)
+
+    language_targets = build_language_targets(sites)
+
+    generated: list[Path] = []
+    root_index = output_root / "index.html"
+    root_index.write_text(render_root_index(repo_root, output_root, configs), encoding="utf-8")
+    generated.append(root_index)
+
+    for config in configs:
+        lang_dir = output_root / config.code
+        lang_dir.mkdir(parents=True, exist_ok=True)
+
+        index_path = lang_dir / "index.html"
+        index_path.write_text(
+            render_index(
+                repo_root=repo_root,
+                output_root=output_root,
+                config=config,
+                chapters=sites[config.code],
+                configs=configs,
+                language_targets=language_targets,
+            ),
+            encoding="utf-8",
+        )
+        generated.append(index_path)
+
+        chapters = sites[config.code]
+        for idx, chapter in enumerate(chapters):
+            current_page_rel = f"{config.code}/{chapter.output_rel}"
+            previous_href = (
+                relative_href(current_page_rel, f"{config.code}/{chapters[idx - 1].output_rel}")
+                if idx > 0
+                else ""
+            )
+            next_href = (
+                relative_href(current_page_rel, f"{config.code}/{chapters[idx + 1].output_rel}")
+                if idx + 1 < len(chapters)
+                else ""
+            )
+            page_path = output_root / config.code / chapter.output_rel
+            page_path.parent.mkdir(parents=True, exist_ok=True)
+            page_path.write_text(
+                render_chapter_page(
+                    current_page_rel=current_page_rel,
+                    config=config,
+                    configs=configs,
+                    chapter=chapter,
+                    all_chapters=chapters,
+                    language_targets=language_targets,
+                    previous_href=previous_href,
+                    next_href=next_href,
+                ),
+                encoding="utf-8",
+            )
+            generated.append(page_path)
+
+    return generated
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build the multilingual web-book edition")
+    parser.add_argument(
+        "--repo-root",
+        type=Path,
+        default=Path(__file__).resolve().parents[3] / "broad-listening-book",
+        help="Repository root",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=(Path(__file__).resolve().parents[3] / "broad-listening-book") / "html",
+        help="Output directory for the generated static site",
+    )
+    args = parser.parse_args()
+
+    generated = build_site(args.repo_root.resolve(), args.output_dir.resolve())
+    print(f"Generated {len(generated)} files in {args.output_dir}")
+    for path in generated[:20]:
+        print(f"- {path}")
+    if len(generated) > 20:
+        print(f"... and {len(generated) - 20} more")
+
+
+if __name__ == "__main__":
+    main()

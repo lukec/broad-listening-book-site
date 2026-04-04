@@ -1,0 +1,23 @@
+[project]
+name = "broad-listening-book-site"
+version = "0.1.0"
+description = "Private live-reload dev server for the Broad Listening book site"
+requires-python = ">=3.10"
+dependencies = [
+  "markdown>=3.6",
+  "watchdog>=4.0.0",
+]
+
+[project.scripts]
+broad-book-site = "broad_listening_book_site.cli:main"
+broad-book-build = "broad_listening_book_site.web_build:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
