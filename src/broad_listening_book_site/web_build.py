@@ -72,6 +72,8 @@ LANGUAGE_UI = {
         "chapters_in_language": "Chapters in this language",
         "draft_badge": "Pre-release Draft",
         "start_reading": "Start reading →",
+        "continue_reading": "Continue reading →",
+        "continue_reading_short": "Continue reading",
         "previous_chapter": "← Previous chapter",
         "next_chapter": "Next chapter →",
         "next_prefix": "Next:",
@@ -93,6 +95,8 @@ LANGUAGE_UI = {
         "chapters_in_language": "この言語の章一覧",
         "draft_badge": "先行公開ドラフト",
         "start_reading": "読み始める →",
+        "continue_reading": "続きを読む →",
+        "continue_reading_short": "続きを読む",
         "previous_chapter": "← 前の章",
         "next_chapter": "次の章 →",
         "next_prefix": "次:",
@@ -319,6 +323,13 @@ code {
   font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, Courier, monospace;
 }
 
+.wordmark-inline {
+  font-family: SFMono-Regular, Consolas, Liberation Mono, Menlo, Courier, monospace;
+  font-size: 0.92em;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
 pre {
   overflow-x: auto;
 }
@@ -387,6 +398,45 @@ td {
 .button--ghost:hover,
 .button--ghost:visited {
   color: rgb(var(--color-text));
+}
+
+.continue-reading {
+  display: none;
+  width: 100%;
+  max-width: 46rem;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.95rem 1.2rem;
+  border: 0.1rem solid rgba(0, 0, 0, 0.12);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.03);
+  text-decoration: none;
+  color: rgb(var(--color-text));
+}
+
+.continue-reading.is-visible {
+  display: inline-flex;
+}
+
+.continue-reading__eyebrow {
+  display: block;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.2rem;
+  font-size: var(--type-xxxx-small);
+}
+
+.continue-reading__title {
+  display: block;
+  margin: 0.1rem 0 0;
+  font-size: var(--type-x-small);
+  line-height: 1.2;
+}
+
+.continue-reading__arrow {
+  margin-left: auto;
+  font-size: var(--type-small);
+  white-space: nowrap;
 }
 
 .root {
@@ -989,6 +1039,34 @@ if (sectionLinks.length && headings.length && 'IntersectionObserver' in window) 
 
   headings.forEach((heading) => observer.observe(heading));
 }
+
+const readingMeta = document.body.dataset.readingPage;
+if (readingMeta) {
+  try {
+    const saved = JSON.parse(readingMeta);
+    if (saved && saved.href && saved.title) {
+      const rootHref = saved.href.startsWith('/') ? saved.href : `/${saved.href.replace(/^\/+/, '')}`;
+      localStorage.setItem('broad-book:last-reading', JSON.stringify({ href: rootHref, title: saved.title }));
+    }
+  } catch (_) {}
+}
+
+const continueReadingLink = document.querySelector('[data-continue-reading]');
+if (continueReadingLink) {
+  try {
+    const raw = localStorage.getItem('broad-book:last-reading');
+    if (raw) {
+      const saved = JSON.parse(raw);
+      if (saved && saved.href && saved.title) {
+        continueReadingLink.href = saved.href;
+        const titleNode = continueReadingLink.querySelector('[data-continue-title]');
+        if (titleNode) titleNode.textContent = saved.title;
+        continueReadingLink.hidden = false;
+        continueReadingLink.classList.add('is-visible');
+      }
+    }
+  } catch (_) {}
+}
 """
 
 
@@ -1128,6 +1206,65 @@ def linkify_html(html_text: str) -> str:
 
 def strip_tags(fragment: str) -> str:
     return re.sub(r"<[^>]+>", "", fragment).strip()
+
+
+class G0VWordmarkHTMLParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=False)
+        self.output: list[str] = []
+        self.tag_stack: list[str] = []
+
+    def _attrs_to_text(self, attrs: list[tuple[str, str | None]]) -> str:
+        rendered = []
+        for key, value in attrs:
+            if value is None:
+                rendered.append(f" {key}")
+            else:
+                rendered.append(f' {key}="{html.escape(value, quote=True)}"')
+        return "".join(rendered)
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.output.append(f"<{tag}{self._attrs_to_text(attrs)}>")
+        self.tag_stack.append(tag.lower())
+
+    def handle_endtag(self, tag: str) -> None:
+        self.output.append(f"</{tag}>")
+        if self.tag_stack:
+            self.tag_stack.pop()
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        self.output.append(f"<{tag}{self._attrs_to_text(attrs)} />")
+
+    def handle_data(self, data: str) -> None:
+        if any(tag in {"a", "code", "pre", "script", "style"} for tag in self.tag_stack):
+            self.output.append(data)
+            return
+        data = re.sub(r'(?<![\\w])g0v\\.tw(?![\\w])', r'<span class="wordmark-inline">g0v.tw</span>', data)
+        data = re.sub(r'(?<![\\w])gov\\.tw(?![\\w])', r'<span class="wordmark-inline">gov.tw</span>', data)
+        data = re.sub(r'(?<![\\w])g0v(?![\\w])', r'<span class="wordmark-inline">g0v</span>', data)
+        self.output.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        self.output.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.output.append(f"&#{name};")
+
+    def handle_comment(self, data: str) -> None:
+        self.output.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str) -> None:
+        self.output.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str) -> None:
+        self.output.append(f"<?{data}>")
+
+
+def style_g0v_wordmark(html_text: str) -> str:
+    parser = G0VWordmarkHTMLParser()
+    parser.feed(html_text)
+    parser.close()
+    return "".join(parser.output)
 
 
 def first_heading(md_text: str) -> str:
@@ -1347,6 +1484,8 @@ def build_chapters(
         html_body = render_markdown(filtered_md_text)
         if config.code == "en":
             html_body = soften_translator_meta(html_body)
+        if config.code == "en" and relative_path == "11_01_taiwan.md":
+            html_body = style_g0v_wordmark(html_body)
         html_body = fix_relative_assets(
             html_text=html_body,
             repo_root=repo_root,
@@ -1471,6 +1610,7 @@ def render_root_index(repo_root: Path, output_root: Path, configs: list[Language
         <div class="root__languages">
           {''.join(buttons)}
         </div>
+        <p><a class="button button--ghost continue-reading" data-continue-reading hidden href="en/index.html"><span><span class="continue-reading__eyebrow">Continue reading</span><span class="continue-reading__title" data-continue-title>Pick up where you left off</span></span><span class="continue-reading__arrow">→</span></a></p>
         <section class="root__notes">
           <h2 class="root__notes-title">With Thanks</h2>
           <p>With gratitude to the <a href="https://dd2030.org/">Digital Democracy 2030 team</a> for creating and sharing the source material behind this web edition.</p>
@@ -1564,6 +1704,7 @@ def render_index(
         <p class="landing-subtitle">{config.subtitle}</p>
         <p class="landing-author"><em>{html.escape(config.author)}</em></p>
         <p><a class="button" href="{chapters[0].output_rel}">{html.escape(ui["start_reading"])}</a></p>
+        <p><a class="button button--ghost continue-reading" data-continue-reading hidden href="{chapters[0].output_rel}"><span><span class="continue-reading__eyebrow">{html.escape(ui['continue_reading_short'])}</span><span class="continue-reading__title" data-continue-title>{html.escape(chapters[0].title)}</span></span><span class="continue-reading__arrow">→</span></a></p>
         <hr>
         {''.join(parts)}
       </section>
@@ -1670,6 +1811,7 @@ def render_chapter_page(
     next_href: str,
 ) -> str:
     ui = LANGUAGE_UI[config.code]
+    reading_meta = html.escape(json.dumps({"href": current_page_rel, "title": chapter.title}), quote=True)
     body_html = strip_leading_heading(chapter.body_html)
     title_text = sidebar_chapter_title(chapter)
     display_title, display_subtitle = split_display_title(title_text) if config.code == "en" else (title_text, "")
@@ -1727,7 +1869,7 @@ def render_chapter_page(
         assets_href=assets_href,
         body=body,
         body_class=config.body_class,
-    )
+    ).replace(f'<body class="{config.body_class}">', f'<body class="{config.body_class}" data-reading-page="{reading_meta}">')
 
 
 def sync_tree(source: Path, destination: Path) -> None:
