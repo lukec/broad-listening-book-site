@@ -7,7 +7,7 @@ This repo now owns the fancy multilingual HTML book build and the local live-rel
 It does two main things:
 
 1. builds the web edition from manuscript content in `../broad-listening-book`
-2. serves `../broad-listening-book/html`, watches manuscript changes, and live-reloads browser tabs
+2. serves its own generated `site/` directory, watches manuscript changes, and live-reloads browser tabs
 
 ## Requirements
 
@@ -35,14 +35,14 @@ By default this reads content from:
 
 and writes output to:
 
-- `../broad-listening-book/html`
+- `./site`
 
 You can also run it explicitly:
 
 ```bash
 uv run python -m broad_listening_book_site.web_build \
   --repo-root ../broad-listening-book \
-  --output-dir ../broad-listening-book/html
+  --output-dir ./site
 ```
 
 ## Run the dev server
@@ -100,4 +100,4 @@ This repo follows the same license as the manuscript repo: [CC BY 4.0](https://c
 - HTML responses get a tiny live-reload snippet injected at serve time.
 - The manuscript repo remains the content source.
 - This repo owns the web-edition builder and dev workflow.
-- Output still lands in `../broad-listening-book/html` for low-churn compatibility.
+- Generated output stays inside this repo by default.

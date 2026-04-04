@@ -7,7 +7,9 @@ import mimetypes
 import os
 import posixpath
 import queue
+import shutil
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -24,8 +26,7 @@ LOGGER = logging.getLogger("broad_book_site")
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_DEBOUNCE_MS = 700
-DEFAULT_UV = os.environ.get("UV_BIN", "/home/lukec/.local/bin/uv")
-SITE_REPO_ROOT = Path(__file__).resolve().parents[3]
+SITE_REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_RELOAD_SNIPPET = """<script>
 (() => {
   const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
@@ -148,11 +149,22 @@ def should_watch(rel_path: str) -> bool:
     return Path(rel_path).suffix.lower() in WATCH_EXTENSIONS
 
 
-def run_build(state: BuildState) -> bool:
-    command = [
-        DEFAULT_UV,
-        "run",
-        "python",
+def resolve_build_command(state: BuildState) -> list[str]:
+    uv_bin = os.environ.get("UV_BIN") or shutil.which("uv")
+    if uv_bin:
+        return [
+            uv_bin,
+            "run",
+            "python",
+            "-m",
+            "broad_listening_book_site.web_build",
+            "--repo-root",
+            str(state.repo_root),
+            "--output-dir",
+            str(state.html_root),
+        ]
+    return [
+        sys.executable,
         "-m",
         "broad_listening_book_site.web_build",
         "--repo-root",
@@ -160,6 +172,10 @@ def run_build(state: BuildState) -> bool:
         "--output-dir",
         str(state.html_root),
     ]
+
+
+def run_build(state: BuildState) -> bool:
+    command = resolve_build_command(state)
     with state.lock:
         state.building = True
         state.last_build_started = time.time()
@@ -334,7 +350,7 @@ def start_observer(state: BuildState) -> Observer:
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Live-reload dev server for broad-listening-book/html")
+    parser = argparse.ArgumentParser(description="Live-reload dev server for the Broad Listening web site")
     parser.add_argument("--book-repo", type=Path, default=Path("../broad-listening-book"), help="Path to manuscript repo")
     parser.add_argument("--host", default=DEFAULT_HOST, help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Bind port (default: 8765)")
@@ -356,7 +372,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     configure_logging(args.verbose)
 
     repo_root = args.book_repo.expanduser().resolve()
-    html_root = repo_root / "html"
+    html_root = SITE_REPO_ROOT / "site"
     if not repo_root.exists():
         raise SystemExit(f"Book repo not found: {repo_root}")
 

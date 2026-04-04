@@ -3,7 +3,7 @@
 Build a multilingual static web-book edition from the manuscript markdown.
 
 Default output:
-    html/
+    site/
       index.html
       assets/
       en/
@@ -23,6 +23,8 @@ from html.parser import HTMLParser
 from pathlib import Path
 
 import markdown
+
+SITE_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SHAPE_UP_TYPEKIT_CSS = "https://use.typekit.net/xig7qap.css"
 DESIGN_CREDIT_COMMENT = (
@@ -2006,13 +2008,13 @@ def main() -> None:
     parser.add_argument(
         "--repo-root",
         type=Path,
-        default=Path(__file__).resolve().parents[3] / "broad-listening-book",
+        default=SITE_REPO_ROOT.parent / "broad-listening-book",
         help="Repository root",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=(Path(__file__).resolve().parents[3] / "broad-listening-book") / "html",
+        default=SITE_REPO_ROOT / "site",
         help="Output directory for the generated static site",
     )
     args = parser.parse_args()
