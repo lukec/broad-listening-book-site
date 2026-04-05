@@ -1325,6 +1325,7 @@ def relative_href(from_rel: str, to_rel: str) -> str:
 def fix_relative_assets(
     html_text: str,
     repo_root: Path,
+    output_root: Path,
     source_root: Path,
     source_path: Path,
     output_path: Path,
@@ -1370,11 +1371,20 @@ def fix_relative_assets(
             resolved = translated_sibling_candidate
         else:
             resolved = fallback_candidate
-        rewritten = (
-            os.path.relpath(resolved, start=output_path.parent.resolve()).replace(os.sep, "/")
-            if resolved.exists()
-            else target
-        )
+
+        rewritten = target
+        if resolved.exists():
+            try:
+                repo_rel = resolved.relative_to(repo_root.resolve()).as_posix()
+            except ValueError:
+                repo_rel = ""
+
+            published_candidate = output_root / repo_rel if repo_rel else None
+            if published_candidate is not None and published_candidate.exists():
+                current_output_rel = output_path.relative_to(output_root).as_posix()
+                rewritten = relative_href(current_output_rel, repo_rel)
+            else:
+                rewritten = os.path.relpath(resolved, start=output_path.parent.resolve()).replace(os.sep, "/")
         return f'{attr}="{rewritten}{sep}{anchor}"'
 
     return re.sub(r'(src|href)="([^"]+)"', rewrite, html_text)
@@ -1491,6 +1501,7 @@ def build_chapters(
         html_body = fix_relative_assets(
             html_text=html_body,
             repo_root=repo_root,
+            output_root=output_root,
             source_root=config.source_root,
             source_path=source_path,
             output_path=output_path,
