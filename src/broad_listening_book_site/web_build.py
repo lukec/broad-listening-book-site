@@ -1496,7 +1496,7 @@ def build_chapters(
         html_body = render_markdown(filtered_md_text)
         if config.code == "en":
             html_body = soften_translator_meta(html_body)
-        if config.code == "en" and relative_path == "11_01_taiwan.md":
+        if config.code == "en" and relative_path in {"11_01_taiwan.md", "11_05_harnessing_connective_action.md"}:
             html_body = style_g0v_wordmark(html_body)
         html_body = fix_relative_assets(
             html_text=html_body,
