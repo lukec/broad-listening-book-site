@@ -323,7 +323,8 @@ class BookRequestHandler(BaseHTTPRequestHandler):
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Cache-Control", "no-store" if content_type.startswith("text/html") else "public, max-age=60")
+        # This server is for live editing, so every asset should bypass caches.
+        self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.wfile.write(data)
 

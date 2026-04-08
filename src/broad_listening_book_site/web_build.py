@@ -341,6 +341,12 @@ pre code {
   padding: 1.25rem;
 }
 
+pre code.language-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 img {
   max-width: 100%;
   border-radius: 1rem;
@@ -575,6 +581,12 @@ td {
   list-style: none;
 }
 
+.intro__sections--index {
+  max-height: min(62vh, calc(100vh - 18rem));
+  overflow-y: auto;
+  padding-right: 0.4em;
+}
+
 .intro__sidebar-title {
   margin: 0.55em 0 0 0;
   font-size: var(--type-large);
@@ -597,6 +609,32 @@ td {
 
 .intro__section a.is-active {
   text-decoration: underline;
+}
+
+.intro__section--part {
+  margin-top: 1em;
+  padding-top: 0.8em;
+  border-top: 0.1rem solid rgba(var(--color-text), 0.18);
+  font-size: var(--type-xx-small);
+  font-style: normal;
+  font-weight: bold;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.intro__section--part:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.intro__section--jump {
+  font-style: normal;
+  line-height: 1.25;
+}
+
+.intro__section--jump a {
+  display: block;
 }
 
 .intro__next {
@@ -1467,6 +1505,25 @@ def chapter_link_label(chapter: Chapter) -> str:
     return f"{chapter.chapter_label}: {chapter.title}"
 
 
+def index_anchor_id(chapter: Chapter) -> str:
+    stem = Path(chapter.output_rel).with_suffix("").as_posix()
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", stem).strip("-").lower()
+    return f"index-jump-{slug}"
+
+
+def index_jump_label(chapter: Chapter, config: LanguageConfig) -> str:
+    title_text = sidebar_display_title(chapter, config)
+    if chapter.chapter_label in {
+        LANGUAGE_UI[config.code]["preface"],
+        LANGUAGE_UI[config.code]["endorsement"],
+        LANGUAGE_UI[config.code]["column"],
+        LANGUAGE_UI[config.code]["appendix"],
+    }:
+        return title_text
+    separator = ": " if config.code == "en" else " "
+    return f"{chapter.chapter_label}{separator}{title_text}"
+
+
 def build_chapters(
     repo_root: Path,
     output_root: Path,
@@ -1604,7 +1661,7 @@ def page_template(
 
 def render_root_index(repo_root: Path, output_root: Path, configs: list[LanguageConfig]) -> str:
     english = next(config for config in configs if config.code == "en")
-    image_href = os.path.relpath(repo_root / LANDING_IMAGE, start=output_root).replace(os.sep, "/")
+    image_href = relative_href("index.html", LANDING_IMAGE)
     buttons = []
     for config in configs:
         cta = "Start reading in English" if config.code == "en" else "日本語で読み始める"
@@ -1651,14 +1708,43 @@ def render_index(
     language_targets: dict[str, dict[str, str]],
 ) -> str:
     ui = LANGUAGE_UI[config.code]
-    image_href = os.path.relpath(repo_root / LANDING_IMAGE, start=output_root / config.code).replace(os.sep, "/")
     current_page_rel = f"{config.code}/index.html"
+    image_href = relative_href(current_page_rel, LANDING_IMAGE)
     grouped: list[tuple[str, list[Chapter]]] = []
     for chapter in chapters:
         if not grouped or grouped[-1][0] != chapter.part_label:
             grouped.append((chapter.part_label, [chapter]))
         else:
             grouped[-1][1].append(chapter)
+
+    jump_groups = []
+    for part_label, part_chapters in grouped:
+        jump_items = "".join(
+            f'<li class="intro__section intro__section--jump"><a data-section-link href="#{index_anchor_id(chapter)}">{html.escape(index_jump_label(chapter, config))}</a></li>'
+            for chapter in part_chapters
+        )
+        jump_groups.append(
+            f"""
+          <li class="intro__section intro__section--part">{html.escape(part_label)}</li>
+          {jump_items}
+"""
+        )
+
+    sidebar = f"""
+      <aside class="intro">
+        <div class="intro__content intro__content--sticky">
+          <a class="intro__book-title button intro__book-title--compact" href="{relative_href(current_page_rel, f"{config.code}/index.html")}">{html.escape(config.title)}</a>
+          <div class="intro__utility">
+            <p class="intro__back"><a href="{relative_href(current_page_rel, 'index.html')}"><em>{html.escape(ui["all_languages"])}</em></a></p>
+            {render_language_switch(current_page_rel, config.code, configs, language_targets, None)}
+          </div>
+          <p class="intro__masthead">{html.escape(ui["chapters_in_language"])}</p>
+          <ul class="intro__sections intro__sections--index">
+            {''.join(jump_groups)}
+          </ul>
+        </div>
+      </aside>
+"""
 
     parts = []
     for part_label, part_chapters in grouped:
@@ -1680,7 +1766,7 @@ def render_index(
             )
             items.append(
                 f"""
-        <li class="toc-chapter">
+        <li class="toc-chapter" id="{index_anchor_id(chapter)}">
           {chapter_number_html}
           <h3 class="toc-chapter__title"><a href="{chapter.output_rel}">{html.escape(chapter.title)}</a></h3>
           {"<ul class=\"toc-sections\">" + sections + "</ul>" if sections else ""}
@@ -1704,14 +1790,9 @@ def render_index(
 
     body = f"""
     <main class="wb">
-      <section class="intro">
-        <div class="intro__content">
-          <p class="intro__back"><a href="../index.html"><em>{html.escape(ui["all_languages"])}</em></a></p>
-        </div>
-      </section>
+      {sidebar}
 
       <section class="content">
-        {render_language_switch(current_page_rel, config.code, configs, language_targets, None)}
         <img class="landing-image" src="{image_href}" alt="Broad listening diagram">
         <h1 class="landing-title">{html.escape(config.title)}</h1>
         <p class="landing-subtitle">{config.subtitle}</p>
