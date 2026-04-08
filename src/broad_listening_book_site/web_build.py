@@ -32,7 +32,7 @@ DESIGN_CREDIT_COMMENT = (
     "(https://basecamp.com/shapeup). -->"
 )
 LANDING_IMAGE = "images/01_broadlistening.png"
-SOURCE_REPO_URL = "https://github.com/lukec/broad-listening-book"
+SOURCE_REPO_URL = "https://github.com/digitaldemocracy2030/broad-listening-book"
 LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 TRANSLATION_NOTE_TEXT = (
     "Translation note (English edition): Original Japanese authorship is preserved "

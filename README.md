@@ -93,7 +93,7 @@ uv run broad-book-site --skip-initial-build
 
 ## License
 
-This repo follows the same license as the manuscript repo: [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/).
+This repo is licensed under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), matching the manuscript repo. Anyone may freely use, modify, and redistribute it under that license.
 
 ## Notes
 

@@ -1,7 +1,8 @@
 [project]
 name = "broad-listening-book-site"
 version = "0.1.0"
-description = "Private live-reload dev server for the Broad Listening book site"
+description = "Live-reload dev server and builder for the Broad Listening book site"
+license = {file = "LICENSE"}
 requires-python = ">=3.10"
 dependencies = [
   "markdown>=3.6",
