@@ -1,6 +1,6 @@
 # broad-listening-book-site
 
-Private tooling repo for the Broad Listening web edition.
+Tooling repo for a pretty web version of the Broad Listening book.
 
 This repo now owns the fancy multilingual HTML book build and the local live-reload dev server for the sibling manuscript repo at `../broad-listening-book`.
 
