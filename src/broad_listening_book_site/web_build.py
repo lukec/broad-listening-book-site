@@ -170,7 +170,7 @@ body {
 .draft-ribbon {
   position: fixed;
   top: 1.4rem;
-  right: 1.4rem;
+  left: 1.4rem;
   z-index: 30;
   display: inline-flex;
   align-items: center;
@@ -190,7 +190,7 @@ body {
   box-shadow:
     0.2rem 0.2rem 0 #fff8fb,
     0.55rem 0.55rem 0 #ff9fc4;
-  transform: rotate(5deg);
+  transform: rotate(-5deg);
 }
 
 .draft-ribbon::before,
@@ -969,7 +969,7 @@ td {
 
   .draft-ribbon {
     top: 0.8rem;
-    right: 0.8rem;
+    left: 0.8rem;
     padding: 0.6rem 1rem;
     font-size: 1.1rem;
     box-shadow:
