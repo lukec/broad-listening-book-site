@@ -29,7 +29,7 @@
     "FIXED_USERNAME": "preview",
     "SESSION_COOKIE_NAME": "broad_listening_preview",
     "COOKIE_TTL_SECONDS": "2592000",
-    "CLOUDFLARE_WEB_ANALYTICS_TOKEN": ""
+    "CLOUDFLARE_WEB_ANALYTICS_TOKEN": "3afed4dd752a4b58952134d7b8140b6a"
   },
   "dev": {
     "ip": "127.0.0.1",
