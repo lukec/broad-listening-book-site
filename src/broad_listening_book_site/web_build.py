@@ -24,7 +24,7 @@ from pathlib import Path
 
 import markdown
 
-SITE_REPO_ROOT = Path(__file__).resolve().parents[2]
+from .config import default_book_source_dir, default_site_output_dir, SITE_REPO_ROOT
 
 SHAPE_UP_TYPEKIT_CSS = "https://use.typekit.net/xig7qap.css"
 DESIGN_CREDIT_COMMENT = (
@@ -2100,13 +2100,13 @@ def main() -> None:
     parser.add_argument(
         "--repo-root",
         type=Path,
-        default=SITE_REPO_ROOT.parent / "broad-listening-book",
-        help="Repository root",
+        default=default_book_source_dir(),
+        help="Repository root (defaults to BOOK_SOURCE_DIR or ../broad-listening-book)",
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
-        default=SITE_REPO_ROOT / "site",
+        default=default_site_output_dir(),
         help="Output directory for the generated static site",
     )
     args = parser.parse_args()

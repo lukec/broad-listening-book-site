@@ -22,11 +22,12 @@ from urllib.parse import unquote, urlsplit
 from watchdog.events import DirModifiedEvent, FileClosedEvent, FileCreatedEvent, FileModifiedEvent, FileMovedEvent, FileSystemEvent, FileSystemEventHandler
 from watchdog.observers import Observer
 
+from .config import default_book_source_dir, default_site_output_dir, SITE_REPO_ROOT
+
 LOGGER = logging.getLogger("broad_book_site")
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_DEBOUNCE_MS = 700
-SITE_REPO_ROOT = Path(__file__).resolve().parents[2]
 LIVE_RELOAD_SNIPPET = """<script>
 (() => {
   const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
@@ -352,7 +353,12 @@ def start_observer(state: BuildState) -> Observer:
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Live-reload dev server for the Broad Listening web site")
-    parser.add_argument("--book-repo", type=Path, default=Path("../broad-listening-book"), help="Path to manuscript repo")
+    parser.add_argument(
+        "--book-repo",
+        type=Path,
+        default=default_book_source_dir(),
+        help="Path to manuscript repo (defaults to BOOK_SOURCE_DIR or ../broad-listening-book)",
+    )
     parser.add_argument("--host", default=DEFAULT_HOST, help="Bind host (default: 127.0.0.1)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help="Bind port (default: 8765)")
     parser.add_argument("--debounce-ms", type=int, default=DEFAULT_DEBOUNCE_MS, help="Debounce before rebuilding")
@@ -373,7 +379,7 @@ def main(argv: Iterable[str] | None = None) -> None:
     configure_logging(args.verbose)
 
     repo_root = args.book_repo.expanduser().resolve()
-    html_root = SITE_REPO_ROOT / "site"
+    html_root = default_site_output_dir()
     if not repo_root.exists():
         raise SystemExit(f"Book repo not found: {repo_root}")
 
