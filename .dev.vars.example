@@ -1,0 +1,2 @@
+SHARED_PASSWORD=replace-with-shared-preview-password
+COOKIE_SIGNING_SECRET=replace-with-a-long-random-secret

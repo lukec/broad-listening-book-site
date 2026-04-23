@@ -1,0 +1,20 @@
+{
+  "name": "broad-listening-book-site",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20 <26"
+  },
+  "scripts": {
+    "build:site": "uv run broad-book-build",
+    "preview:site": "uv run broad-book-site",
+    "check:site": "node ./scripts/check-site-built.mjs",
+    "preview:worker": "npm run check:site && wrangler dev",
+    "deploy:worker": "npm run check:site && wrangler deploy",
+    "cf:secret:password": "wrangler secret put SHARED_PASSWORD",
+    "cf:secret:cookie": "wrangler secret put COOKIE_SIGNING_SECRET"
+  },
+  "devDependencies": {
+    "wrangler": ">=4 <6"
+  }
+}

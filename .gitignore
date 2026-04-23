@@ -2,3 +2,14 @@
 site/
 src/broad_listening_book_site.egg-info/
 src/broad_listening_book_site/__pycache__/
+node_modules/
+.wrangler/
+.dev.vars
+.env
+.env.local
+.env.*.local
+infra/**/.terraform/
+infra/**/terraform.tfstate
+infra/**/terraform.tfstate.*
+infra/**/terraform.tfvars
+infra/**/*.auto.tfvars

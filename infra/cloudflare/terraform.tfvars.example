@@ -1,0 +1,5 @@
+cloudflare_account_id    = "replace-with-your-account-id"
+zone_name                = "broadlisteningbook.com"
+worker_service_name      = "broad-listening-book-site"
+enable_www_custom_domain = true
+enable_dnssec            = false
