@@ -472,7 +472,8 @@ function renderLoginPage(config, { nextPath, errorMessage = "" }) {
     "X-Robots-Tag": NOINDEX_POLICY,
   });
 
-  return new Response(body, { status: 200, headers });
+  const html = config.webAnalyticsToken ? injectWebAnalytics(body, config.webAnalyticsToken) : body;
+  return new Response(html, { status: 200, headers });
 }
 
 function injectLogoutControl(html) {
