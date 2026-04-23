@@ -7,6 +7,7 @@ import {
 } from "./auth.js";
 
 const SHAPE_UP_TYPEKIT_CSS = "https://use.typekit.net/xig7qap.css";
+const CLOUDFLARE_WEB_ANALYTICS_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
 const NOINDEX_POLICY = "noindex, nofollow, noarchive";
 const LOGIN_PATH = "/login";
 const LOGOUT_PATH = "/logout";
@@ -17,8 +18,8 @@ export default {
     const url = new URL(request.url);
     let session = null;
 
-    if (shouldRedirectWww(url, config)) {
-      return buildRedirectResponse(buildApexUrl(url, config), 301);
+    if (shouldRedirectToCanonicalHttps(url, config)) {
+      return buildRedirectResponse(buildCanonicalHttpsUrl(url, config), 301);
     }
 
     if (url.pathname === "/robots.txt") {
@@ -167,6 +168,7 @@ function loadConfig(env) {
     cookieTtlSeconds: normalizePositiveInteger(env.COOKIE_TTL_SECONDS, 60 * 60 * 24 * 30),
     cookieSigningSecret: env.COOKIE_SIGNING_SECRET,
     sharedPassword: env.SHARED_PASSWORD,
+    webAnalyticsToken: String(env.CLOUDFLARE_WEB_ANALYTICS_TOKEN || "").trim(),
     defaultAfterLoginPath: "/",
   };
 }
@@ -183,13 +185,16 @@ function shouldProtectPath(pathname, config) {
   return pathname === "/ja" || pathname.startsWith("/ja/");
 }
 
-function shouldRedirectWww(url, config) {
-  return url.hostname === config.wwwHost;
+function shouldRedirectToCanonicalHttps(url, config) {
+  const isConfiguredHost = url.hostname === config.canonicalHost || url.hostname === config.wwwHost;
+  return isConfiguredHost && (url.protocol !== "https:" || url.hostname === config.wwwHost);
 }
 
-function buildApexUrl(url, config) {
+function buildCanonicalHttpsUrl(url, config) {
   const redirected = new URL(url.toString());
-  redirected.hostname = config.canonicalHost;
+  if (redirected.hostname === config.wwwHost) {
+    redirected.hostname = config.canonicalHost;
+  }
   redirected.protocol = "https:";
   return redirected.toString();
 }
@@ -255,15 +260,22 @@ async function withResponseHeaders(response, request, config, options = {}) {
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   const contentType = headers.get("Content-Type") || "";
   const shouldInjectLogout = options.injectLogoutControl && contentType.includes("text/html");
+  const shouldInjectAnalytics = Boolean(config.webAnalyticsToken) && contentType.includes("text/html");
 
   if (shouldApplyNoindex(new URL(request.url).pathname, config)) {
     headers.set("X-Robots-Tag", NOINDEX_POLICY);
   }
 
   let body = response.body;
-  if (shouldInjectLogout) {
-    const originalHtml = await response.text();
-    body = injectLogoutControl(originalHtml);
+  if (shouldInjectLogout || shouldInjectAnalytics) {
+    let html = await response.text();
+    if (shouldInjectLogout) {
+      html = injectLogoutControl(html);
+    }
+    if (shouldInjectAnalytics) {
+      html = injectWebAnalytics(html, config.webAnalyticsToken);
+    }
+    body = html;
     headers.set("Content-Type", "text/html; charset=utf-8");
     headers.delete("Content-Length");
   }
@@ -489,6 +501,20 @@ function injectLogoutControl(html) {
     return html.replace("</body>", `${snippet}\n</body>`);
   }
   return `${html}\n${snippet}`;
+}
+
+function injectWebAnalytics(html, token) {
+  if (html.includes(CLOUDFLARE_WEB_ANALYTICS_SRC)) {
+    return html;
+  }
+
+  const beaconConfig = escapeHtml(JSON.stringify({ token }));
+  const snippet = `<!-- Cloudflare Web Analytics --><script defer src="${CLOUDFLARE_WEB_ANALYTICS_SRC}" data-cf-beacon='${beaconConfig}'></script><!-- End Cloudflare Web Analytics -->`;
+
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `    ${snippet}\n  </head>`);
+  }
+  return `${snippet}\n${html}`;
 }
 
 function buildErrorResponse(message) {

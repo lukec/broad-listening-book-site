@@ -129,6 +129,25 @@ Login POSTs are also rate-limited in the Worker using Cloudflare's rate limiting
 
 - 10 attempts per 60 seconds per client IP, per Cloudflare location
 
+## Cloudflare Web Analytics
+
+The Worker can inject the Cloudflare Web Analytics beacon into authenticated HTML pages. This keeps the generated `site/` directory token-free and avoids tracking the password page itself.
+
+To enable it:
+
+1. In Cloudflare, go to Web Analytics and add `broadlisteningbook.com`.
+2. Copy the site token from the JavaScript snippet.
+3. Set `CLOUDFLARE_WEB_ANALYTICS_TOKEN` in `wrangler.jsonc`.
+4. Deploy the Worker.
+
+The injected beacon is Cloudflare's standard script:
+
+```html
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"..."}'></script>
+```
+
+Cloudflare Web Analytics is JavaScript-based, so it reports browser page views for readers who load the authenticated pages and run the beacon. It will not count the password form, `/logout`, or clients that block the beacon script.
+
 ## Cloudflare Deploy Scaffold
 
 This repo now includes:
