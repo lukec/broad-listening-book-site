@@ -220,7 +220,7 @@ function redirectToLogin(url, config) {
   loginUrl.searchParams.set("next", `${url.pathname}${url.search}`);
   const response = buildRedirectResponse(loginUrl, 302);
   response.headers.set("Cache-Control", "no-store");
-  if (config.indexingMode === "blocked") {
+  if (shouldApplyNoindex(url.pathname, config)) {
     response.headers.set("X-Robots-Tag", NOINDEX_POLICY);
   }
   return response;
