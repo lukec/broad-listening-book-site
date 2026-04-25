@@ -651,6 +651,7 @@ td {
   margin: 0;
   padding: 0;
   grid-area: content;
+  min-width: 0;
   position: relative;
 }
 
@@ -808,6 +809,10 @@ td {
   vertical-align: super;
 }
 
+.chapter a {
+  overflow-wrap: anywhere;
+}
+
 .chapter .footnote-ref {
   display: inline;
   margin-left: 0.08em;
@@ -914,7 +919,7 @@ td {
   }
 
   .content {
-    padding: 2.65em 6em 0 3.5em;
+    padding: 2.65em clamp(2.5em, 5vw, 5em) 0 3.5em;
   }
 
   .intro__content {
