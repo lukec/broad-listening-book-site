@@ -155,7 +155,11 @@ function loadConfig(env) {
   const wwwHost = normalizeHost(env.WWW_HOST || `www.${canonicalHost}`);
 
   return {
-    authScope: normalizeEnum(env.AUTH_SCOPE, ["all", "ja-only"], "all"),
+    authScope: normalizeEnum(env.AUTH_SCOPE, ["all", "ja-only", "ja-partial"], "all"),
+    jaPublicPrefixes: String(env.JA_PUBLIC_PREFIXES || "00_,12_,13_")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
     indexingMode: normalizeEnum(
       env.SEARCH_INDEXING_MODE,
       ["blocked", "allow-authenticated", "public-english"],
@@ -182,7 +186,19 @@ function shouldProtectPath(pathname, config) {
     return true;
   }
 
-  return pathname === "/ja" || pathname.startsWith("/ja/");
+  if (config.authScope === "ja-only") {
+    return pathname === "/ja" || pathname.startsWith("/ja/");
+  }
+
+  // "ja-partial": protect Japanese pages except index, preface (00_), and tech articles (12_, 13_)
+  if (!(pathname === "/ja" || pathname.startsWith("/ja/"))) {
+    return false;
+  }
+  if (pathname === "/ja" || pathname === "/ja/" || pathname === "/ja/index.html") {
+    return false;
+  }
+  const filename = pathname.split("/").pop() || "";
+  return !config.jaPublicPrefixes.some((prefix) => filename.startsWith(prefix));
 }
 
 function shouldRedirectToCanonicalHttps(url, config) {
@@ -248,7 +264,6 @@ function buildRobotsTxt(config) {
   return [
     "User-agent: *",
     "Allow: /",
-    "Disallow: /ja/",
     "Disallow: /login",
     "Disallow: /logout",
   ].join("\n");

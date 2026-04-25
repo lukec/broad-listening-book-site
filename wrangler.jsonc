@@ -23,8 +23,9 @@
     }
   ],
   "vars": {
-    "AUTH_SCOPE": "all",
-    "SEARCH_INDEXING_MODE": "allow-authenticated",
+    "AUTH_SCOPE": "ja-partial",
+    "SEARCH_INDEXING_MODE": "public-english",
+    "JA_PUBLIC_PREFIXES": "00_,12_,13_",
     "CANONICAL_HOST": "broadlisteningbook.com",
     "FIXED_USERNAME": "preview",
     "SESSION_COOKIE_NAME": "broad_listening_preview",
