@@ -1,0 +1,51 @@
+name: Book or site problem
+description: Report a concrete problem with the Broad Listening book or website.
+title: "[Book/site problem]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the book and website. Specific, checkable reports are much easier to review and fix.
+  - type: input
+    id: page-url
+    attributes:
+      label: Page URL
+      description: Paste the exact page URL where you saw the problem.
+      placeholder: https://broadlisteningbook.com/en/...
+    validations:
+      required: true
+  - type: dropdown
+    id: problem-type
+    attributes:
+      label: Problem type
+      options:
+        - Typo or wording
+        - Translation issue
+        - Broken link
+        - Image or table issue
+        - Layout or website bug
+        - Factual concern
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is the problem?
+      description: Quote the relevant text or describe the exact element involved.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Suggested fix or expected behavior
+      description: If you know the correction, include it here.
+    validations:
+      required: false
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: For site issues, include browser/device details or screenshots if helpful.
+    validations:
+      required: false

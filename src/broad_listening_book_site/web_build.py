@@ -32,7 +32,11 @@ DESIGN_CREDIT_COMMENT = (
     "(https://basecamp.com/shapeup). -->"
 )
 LANDING_IMAGE = "images/01_broadlistening.png"
+DD2030_URL = "https://dd2030.org/"
 SOURCE_REPO_URL = "https://github.com/digitaldemocracy2030/broad-listening-book"
+SITE_REPO_URL = "https://github.com/lukec/broad-listening-book-site"
+SITE_ISSUES_URL = f"{SITE_REPO_URL}/issues"
+SITE_NEW_ISSUE_URL = f"{SITE_REPO_URL}/issues/new?template=book-site-problem.yml"
 LICENSE_URL = "https://creativecommons.org/licenses/by/4.0/"
 TRANSLATION_NOTE_TEXT = (
     "Translation note (English edition): Original Japanese authorship is preserved "
@@ -90,6 +94,10 @@ LANGUAGE_UI = {
         "choose_language_subtitle": "One web edition for every language of the book.",
         "open_edition": "Open edition",
         "site_suffix": "English Web Edition",
+        "about_this_book": "About this Book",
+        "report_problem": "Problems with the book?",
+        "share_passage": "Share passage",
+        "copied_passage": "Copied",
     },
     "ja": {
         "all_languages": "← 言語一覧へ",
@@ -113,6 +121,10 @@ LANGUAGE_UI = {
         "choose_language_subtitle": "この書籍を同じサイトで多言語公開します。",
         "open_edition": "版を開く",
         "site_suffix": "日本語版Webブック",
+        "about_this_book": "この本について",
+        "report_problem": "本の問題を報告する",
+        "share_passage": "選択箇所を共有",
+        "copied_passage": "コピーしました",
     },
 }
 
@@ -498,6 +510,57 @@ td {
   font-size: var(--type-small);
 }
 
+.site-footer {
+  max-width: 46em;
+  margin-top: 3em;
+  padding-top: 1em;
+  border-top: 0.1rem solid rgba(var(--color-text), 0.18);
+  color: rgba(var(--color-text), 0.68);
+  font-size: var(--type-x-small);
+  line-height: 1.45;
+}
+
+.site-footer a {
+  color: rgb(var(--color-link));
+}
+
+.site-footer__separator {
+  display: inline-block;
+  margin: 0 0.45em;
+}
+
+.info-page {
+  max-width: 64rem;
+}
+
+.info-page__eyebrow {
+  margin: 0 0 1.2em 0;
+  font-size: var(--type-small);
+}
+
+.info-page__lede {
+  margin-top: 1.2em;
+  font-size: var(--type-large);
+  line-height: 1.35;
+}
+
+.info-page__section {
+  margin-top: 2.25em;
+  padding-top: 1.25em;
+  border-top: 0.1rem solid rgba(var(--color-text), 0.2);
+}
+
+.info-page__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8em;
+  margin-top: 1.4em;
+}
+
+.feedback-checklist {
+  margin-left: 1.1em;
+}
+
 .wb {
   width: 100%;
   margin: 0 auto;
@@ -736,7 +799,7 @@ td {
 }
 
 .chapter__header {
-  max-width: 46em;
+  max-width: min(100%, 46em);
   margin: 0 0 1.35em 0;
 }
 
@@ -774,7 +837,7 @@ td {
 .chapter pre,
 .chapter table,
 .chapter img {
-  max-width: 46em;
+  max-width: min(100%, 46em);
 }
 
 .chapter > :first-child {
@@ -783,7 +846,7 @@ td {
 
 .translator-credit,
 .translator-note {
-  max-width: 46em;
+  max-width: min(100%, 46em);
   color: rgba(0, 0, 0, 0.5);
 }
 
@@ -830,7 +893,7 @@ td {
 }
 
 .chapter .footnote {
-  max-width: 46em;
+  max-width: min(100%, 46em);
   margin-top: 2.2em;
   padding-top: 1.1em;
   border-top: 0.1rem solid rgba(0, 0, 0, 0.22);
@@ -876,6 +939,29 @@ td {
 
 .pagination__spacer {
   flex: 1 1 auto;
+}
+
+.share-selection {
+  position: fixed;
+  z-index: 50;
+  left: 1rem;
+  top: 1rem;
+  display: none;
+  padding: 0.7em 0.9em;
+  border: 0.18rem solid rgb(var(--color-link));
+  border-radius: 999px;
+  background: rgb(var(--color-link));
+  color: rgb(var(--color-background));
+  font-family: inherit;
+  font-size: 1.4rem;
+  font-weight: bold;
+  line-height: 1;
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+}
+
+.share-selection.is-visible {
+  display: inline-flex;
 }
 
 .mobile-rail {
@@ -1090,7 +1176,7 @@ if (readingMeta) {
   try {
     const saved = JSON.parse(readingMeta);
     if (saved && saved.href && saved.title) {
-      const rootHref = saved.href.startsWith('/') ? saved.href : `/${saved.href.replace(/^\/+/, '')}`;
+      const rootHref = saved.href.startsWith('/') ? saved.href : `/${saved.href.replace(/^[/]+/, '')}`;
       localStorage.setItem('broad-book:last-reading', JSON.stringify({ href: rootHref, title: saved.title }));
     }
   } catch (_) {}
@@ -1111,6 +1197,67 @@ if (continueReadingLink) {
       }
     }
   } catch (_) {}
+}
+
+const chapter = document.querySelector('.chapter');
+const shareSelectionButton = document.querySelector('[data-share-selection]');
+if (chapter && shareSelectionButton) {
+  let selectedText = '';
+
+  const hideShareSelection = () => {
+    shareSelectionButton.classList.remove('is-visible');
+    shareSelectionButton.setAttribute('aria-hidden', 'true');
+  };
+
+  const selectionInsideChapter = (selection) => {
+    if (!selection || selection.rangeCount === 0) return false;
+    const anchorNode = selection.anchorNode?.nodeType === Node.TEXT_NODE
+      ? selection.anchorNode.parentElement
+      : selection.anchorNode;
+    const focusNode = selection.focusNode?.nodeType === Node.TEXT_NODE
+      ? selection.focusNode.parentElement
+      : selection.focusNode;
+    return Boolean(anchorNode && focusNode && chapter.contains(anchorNode) && chapter.contains(focusNode));
+  };
+
+  const showShareSelection = () => {
+    const selection = window.getSelection();
+    const text = selection?.toString().replace(/[\\s]+/g, ' ').trim() || '';
+    if (text.length < 12 || !selectionInsideChapter(selection)) {
+      hideShareSelection();
+      return;
+    }
+
+    selectedText = text.length > 480 ? `${text.slice(0, 477)}...` : text;
+    const range = selection.getRangeAt(0);
+    const rect = range.getBoundingClientRect();
+    const left = Math.min(Math.max(rect.left, 12), window.innerWidth - 160);
+    const top = Math.max(rect.top - 48, 12);
+    shareSelectionButton.style.left = `${left}px`;
+    shareSelectionButton.style.top = `${top}px`;
+    shareSelectionButton.textContent = shareSelectionButton.dataset.shareLabel || 'Share passage';
+    shareSelectionButton.removeAttribute('aria-hidden');
+    shareSelectionButton.classList.add('is-visible');
+  };
+
+  const shareSelectedText = async () => {
+    if (!selectedText) return;
+    const url = window.location.href.split('#')[0];
+    const text = `"${selectedText}"\n\n${document.title}\n${url}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: document.title, text: selectedText, url });
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        shareSelectionButton.textContent = shareSelectionButton.dataset.copiedLabel || 'Copied';
+        window.setTimeout(hideShareSelection, 1200);
+      }
+    } catch (_) {}
+  };
+
+  document.addEventListener('selectionchange', () => window.setTimeout(showShareSelection, 80));
+  document.addEventListener('scroll', hideShareSelection, { passive: true });
+  shareSelectionButton.addEventListener('click', shareSelectedText);
 }
 """
 
@@ -1619,6 +1766,19 @@ def render_language_switch(
     return f'<div class="lang-switch">{" ".join(parts)}</div>'
 
 
+def render_site_footer(current_page_rel: str, lang_code: str = "en") -> str:
+    ui = LANGUAGE_UI.get(lang_code, LANGUAGE_UI["en"])
+    about_href = relative_href(current_page_rel, "about.html")
+    feedback_href = relative_href(current_page_rel, "feedback.html")
+    return f"""
+        <footer class="site-footer">
+          <a href="{about_href}">{html.escape(ui["about_this_book"])}</a>
+          <span class="site-footer__separator" aria-hidden="true">/</span>
+          <a href="{feedback_href}">{html.escape(ui["report_problem"])}</a>
+        </footer>
+"""
+
+
 def page_template(
     *,
     title: str,
@@ -1685,17 +1845,110 @@ def render_root_index(repo_root: Path, output_root: Path, configs: list[Language
         <div class="root__languages">
           {''.join(buttons)}
         </div>
+        <p><a class="button button--ghost" href="about.html">About this Book</a></p>
         <p><a class="button button--ghost continue-reading" data-continue-reading hidden href="en/index.html"><span><span class="continue-reading__eyebrow">Continue reading</span><span class="continue-reading__title" data-continue-title>Pick up where you left off</span></span><span class="continue-reading__arrow">→</span></a></p>
         <section class="root__notes">
           <h2 class="root__notes-title">With Thanks</h2>
-          <p>With gratitude to the <a href="https://dd2030.org/">Digital Democracy 2030 team</a> for creating and sharing the source material behind this web edition.</p>
+          <p>With gratitude to the <a href="{DD2030_URL}">Digital Democracy 2030 team</a> for creating and sharing the source material behind this web edition.</p>
           <p>The manuscript and generated site code are available on <a href="{SOURCE_REPO_URL}">GitHub</a>, and this edition is published under the <a href="{LICENSE_URL}">CC BY 4.0</a> license.</p>
         </section>
+        {render_site_footer("index.html", "en")}
       </main>
     </div>
 """
     return page_template(
         title="Broad Listening",
+        lang_attr="en",
+        assets_href="./assets/book.css",
+        body=body,
+        body_class="lang-en",
+    )
+
+
+def render_about_page(configs: list[LanguageConfig]) -> str:
+    body = f"""
+    <div class="root info-page">
+      <main class="root__main">
+        <p class="info-page__eyebrow"><a href="index.html"><em>← All languages</em></a></p>
+        <h1 class="root__title">About this Book</h1>
+        <p class="info-page__lede">
+          <em>Broad Listening</em> is a community-authored book from
+          <a href="{DD2030_URL}">Digital Democracy 2030</a>, shared to help more people understand
+          how generative AI can support large-scale listening, public-opinion analysis, and democratic participation.
+        </p>
+        <section class="info-page__section">
+          <h2>Authorship and translation</h2>
+          <p>
+            The <a href="{DD2030_URL}">Digital Democracy 2030 community</a> is the author of this book.
+            The English translation and this website are led by Luke C. so the work can be read, checked,
+            and improved by a broader English-speaking audience.
+          </p>
+          <p>
+            The original manuscript remains available on <a href="{SOURCE_REPO_URL}">GitHub</a>.
+            This web edition is published under the <a href="{LICENSE_URL}">CC BY 4.0</a> license.
+          </p>
+        </section>
+        <section class="info-page__section">
+          <h2>How to help</h2>
+          <p>
+            If you find a typo, broken link, mistranslation, layout issue, or factual problem, please report it
+            as a structured GitHub Issue. Specific reports are much easier to review and fix.
+          </p>
+          <p class="info-page__actions">
+            <a class="button" href="en/index.html">Read the English edition</a>
+            <a class="button button--ghost" href="feedback.html">Problems with the book?</a>
+          </p>
+        </section>
+        {render_site_footer("about.html", "en")}
+      </main>
+    </div>
+"""
+    return page_template(
+        title="About this Book | Broad Listening",
+        lang_attr="en",
+        assets_href="./assets/book.css",
+        body=body,
+        body_class="lang-en",
+    )
+
+
+def render_feedback_page(configs: list[LanguageConfig]) -> str:
+    body = f"""
+    <div class="root info-page">
+      <main class="root__main">
+        <p class="info-page__eyebrow"><a href="index.html"><em>← All languages</em></a></p>
+        <h1 class="root__title">Problems with the book?</h1>
+        <p class="info-page__lede">
+          Please use GitHub Issues to report concrete problems with the book or this website.
+          Useful issues are specific, checkable, and include enough context for someone else to reproduce or review.
+        </p>
+        <section class="info-page__section">
+          <h2>What makes a useful issue</h2>
+          <ul class="feedback-checklist">
+            <li>The exact page URL.</li>
+            <li>The sentence, heading, image, table, or link involved.</li>
+            <li>What seems wrong and what you expected instead.</li>
+            <li>For translation issues, include the English passage and, if possible, the Japanese source passage.</li>
+            <li>For site issues, include your browser, device, and a screenshot when helpful.</li>
+          </ul>
+          <p class="info-page__actions">
+            <a class="button" href="{SITE_NEW_ISSUE_URL}">Open a GitHub Issue</a>
+            <a class="button button--ghost" href="{SITE_ISSUES_URL}">View existing issues</a>
+          </p>
+        </section>
+        <section class="info-page__section">
+          <h2>Before opening a new issue</h2>
+          <p>
+            Please quickly check whether the same problem has already been reported.
+            If it has, add any missing detail to the existing issue instead of creating a duplicate.
+          </p>
+        </section>
+        {render_site_footer("feedback.html", "en")}
+      </main>
+    </div>
+"""
+    return page_template(
+        title="Problems with the Book | Broad Listening",
         lang_attr="en",
         assets_href="./assets/book.css",
         body=body,
@@ -1806,6 +2059,7 @@ def render_index(
         <p><a class="button button--ghost continue-reading" data-continue-reading hidden href="{chapters[0].output_rel}"><span><span class="continue-reading__eyebrow">{html.escape(ui['continue_reading_short'])}</span><span class="continue-reading__title" data-continue-title>{html.escape(chapters[0].title)}</span></span><span class="continue-reading__arrow">→</span></a></p>
         <hr>
         {''.join(parts)}
+        {render_site_footer(current_page_rel, config.code)}
       </section>
     </main>
 """
@@ -1958,6 +2212,15 @@ def render_chapter_page(
           {footer_left}
           {footer_right}
         </nav>
+        {render_site_footer(current_page_rel, config.code)}
+        <button
+          class="share-selection"
+          type="button"
+          data-share-selection
+          data-share-label="{html.escape(ui["share_passage"])}"
+          data-copied-label="{html.escape(ui["copied_passage"])}"
+          aria-hidden="true"
+        >{html.escape(ui["share_passage"])}</button>
       </section>
     </main>
 """
@@ -2048,6 +2311,14 @@ def build_site(repo_root: Path, output_root: Path) -> list[Path]:
     root_index = output_root / "index.html"
     root_index.write_text(render_root_index(repo_root, output_root, configs), encoding="utf-8")
     generated.append(root_index)
+
+    about_page = output_root / "about.html"
+    about_page.write_text(render_about_page(configs), encoding="utf-8")
+    generated.append(about_page)
+
+    feedback_page = output_root / "feedback.html"
+    feedback_page.write_text(render_feedback_page(configs), encoding="utf-8")
+    generated.append(feedback_page)
 
     for config in configs:
         lang_dir = output_root / config.code
