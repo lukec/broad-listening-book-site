@@ -190,7 +190,7 @@ function shouldProtectPath(pathname, config) {
     return pathname === "/ja" || pathname.startsWith("/ja/");
   }
 
-  // "ja-partial": protect Japanese pages except index, preface (00_), and tech articles (12_, 13_)
+  // "ja-partial": protect Japanese pages except index, support pages, preface (00_), and tech articles (12_, 13_)
   if (!(pathname === "/ja" || pathname.startsWith("/ja/"))) {
     return false;
   }
@@ -198,6 +198,9 @@ function shouldProtectPath(pathname, config) {
     return false;
   }
   const filename = pathname.split("/").pop() || "";
+  if (filename === "about.html" || filename === "feedback.html") {
+    return false;
+  }
   return !config.jaPublicPrefixes.some((prefix) => filename.startsWith(prefix));
 }
 
