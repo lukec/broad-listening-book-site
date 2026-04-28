@@ -1245,12 +1245,12 @@ if (chapter && shareSelectionButton) {
   const shareSelectedText = async () => {
     if (!selectedText) return;
     const url = window.location.href.split('#')[0];
-    const text = `"${selectedText}"\n\n${document.title}\n${url}`;
+    const text = `"${selectedText}"\n\n${document.title}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: document.title, text });
+        await navigator.share({ title: document.title, text, url });
       } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
+        await navigator.clipboard.writeText(`${text}\n${url}`);
         shareSelectionButton.textContent = shareSelectionButton.dataset.copiedLabel || 'Copied';
         window.setTimeout(hideShareSelection, 1200);
       }
