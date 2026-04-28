@@ -198,7 +198,7 @@ function shouldProtectPath(pathname, config) {
     return false;
   }
   const filename = pathname.split("/").pop() || "";
-  if (filename === "about.html" || filename === "feedback.html") {
+  if (["about", "about.html", "feedback", "feedback.html"].includes(filename)) {
     return false;
   }
   return !config.jaPublicPrefixes.some((prefix) => filename.startsWith(prefix));
