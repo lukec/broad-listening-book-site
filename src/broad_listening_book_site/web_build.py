@@ -1880,7 +1880,7 @@ def render_about_page(configs: list[LanguageConfig]) -> str:
           <h2>Authorship and translation</h2>
           <p>
             The <a href="{DD2030_URL}">Digital Democracy 2030 community</a> is the author of this book.
-            The English translation and this website are led by Luke C. so the work can be read, checked,
+            The English translation and this website are led by <a href="https://x.com/lukec">@lukec</a> so the work can be read, checked,
             and improved by a broader English-speaking audience.
           </p>
           <p>
