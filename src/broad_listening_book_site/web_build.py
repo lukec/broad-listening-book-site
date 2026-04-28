@@ -74,6 +74,7 @@ class Chapter:
 LANGUAGE_UI = {
     "en": {
         "all_languages": "← All languages",
+        "back_to_edition": "← English edition",
         "sections_on_page": "Sections on this page",
         "chapters_in_language": "Chapters in this language",
         "draft_badge": "Pre-release Draft",
@@ -101,6 +102,7 @@ LANGUAGE_UI = {
     },
     "ja": {
         "all_languages": "← 言語一覧へ",
+        "back_to_edition": "← 日本語版へ",
         "sections_on_page": "このページの節",
         "chapters_in_language": "この言語の章一覧",
         "draft_badge": "先行公開ドラフト",
@@ -1246,7 +1248,7 @@ if (chapter && shareSelectionButton) {
     const text = `"${selectedText}"\n\n${document.title}\n${url}`;
     try {
       if (navigator.share) {
-        await navigator.share({ title: document.title, text: selectedText, url });
+        await navigator.share({ title: document.title, text });
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(text);
         shareSelectionButton.textContent = shareSelectionButton.dataset.copiedLabel || 'Copied';
@@ -1768,8 +1770,14 @@ def render_language_switch(
 
 def render_site_footer(current_page_rel: str, lang_code: str = "en") -> str:
     ui = LANGUAGE_UI.get(lang_code, LANGUAGE_UI["en"])
-    about_href = relative_href(current_page_rel, "about.html")
-    feedback_href = relative_href(current_page_rel, "feedback.html")
+    about_target = f"{lang_code}/about.html"
+    feedback_target = f"{lang_code}/feedback.html"
+    if current_page_rel == "about.html":
+        about_target = "about.html"
+    if current_page_rel == "feedback.html":
+        feedback_target = "feedback.html"
+    about_href = relative_href(current_page_rel, about_target)
+    feedback_href = relative_href(current_page_rel, feedback_target)
     return f"""
         <footer class="site-footer">
           <a href="{about_href}">{html.escape(ui["about_this_book"])}</a>
@@ -1845,7 +1853,7 @@ def render_root_index(repo_root: Path, output_root: Path, configs: list[Language
         <div class="root__languages">
           {''.join(buttons)}
         </div>
-        <p><a class="button button--ghost" href="about.html">About this Book</a></p>
+        <p><a class="button button--ghost" href="en/about.html">About this Book</a></p>
         <p><a class="button button--ghost continue-reading" data-continue-reading hidden href="en/index.html"><span><span class="continue-reading__eyebrow">Continue reading</span><span class="continue-reading__title" data-continue-title>Pick up where you left off</span></span><span class="continue-reading__arrow">→</span></a></p>
         <section class="root__notes">
           <h2 class="root__notes-title">With Thanks</h2>
@@ -1865,11 +1873,55 @@ def render_root_index(repo_root: Path, output_root: Path, configs: list[Language
     )
 
 
-def render_about_page(configs: list[LanguageConfig]) -> str:
-    body = f"""
+def render_about_page(config: LanguageConfig, current_page_rel: str) -> str:
+    ui = LANGUAGE_UI[config.code]
+    assets_href = relative_href(current_page_rel, "assets/book.css")
+    back_href = relative_href(current_page_rel, f"{config.code}/index.html")
+
+    if config.code == "ja":
+        body = f"""
     <div class="root info-page">
       <main class="root__main">
-        <p class="info-page__eyebrow"><a href="index.html"><em>← All languages</em></a></p>
+        <p class="info-page__eyebrow"><a href="{back_href}"><em>{html.escape(ui["back_to_edition"])}</em></a></p>
+        <h1 class="root__title">この本について</h1>
+        <p class="info-page__lede">
+          <em>選挙を変えたブロードリスニング</em>は、
+          <a href="{DD2030_URL}">Digital Democracy 2030</a> コミュニティによる書籍です。
+          生成AIが、大規模な声の収集・分析・民主的な参加をどのように支えられるかを共有するために公開されています。
+        </p>
+        <section class="info-page__section">
+          <h2>著者と翻訳</h2>
+          <p>
+            本書の著者は <a href="{DD2030_URL}">Digital Democracy 2030 コミュニティ</a>です。
+            英語翻訳とこのウェブサイトは <a href="https://x.com/lukec">@lukec</a> がリードし、
+            より多くの読者が読み、確認し、改善できるようにしています。
+          </p>
+          <p>
+            元の原稿は <a href="{SOURCE_REPO_URL}">GitHub</a> で公開されています。
+            このウェブ版は <a href="{LICENSE_URL}">CC BY 4.0</a> ライセンスで公開されています。
+          </p>
+        </section>
+        <section class="info-page__section">
+          <h2>協力するには</h2>
+          <p>
+            誤字、リンク切れ、翻訳の問題、レイアウトの問題、事実関係の懸念などを見つけた場合は、
+            GitHub Issue で具体的に報告してください。具体的な報告ほど確認と修正がしやすくなります。
+          </p>
+          <p class="info-page__actions">
+            <a class="button" href="{relative_href(current_page_rel, "ja/index.html")}">日本語版を読む</a>
+            <a class="button button--ghost" href="{relative_href(current_page_rel, "ja/feedback.html")}">本の問題を報告する</a>
+          </p>
+        </section>
+        {render_site_footer(current_page_rel, config.code)}
+      </main>
+    </div>
+"""
+        title = "この本について | 選挙を変えたブロードリスニング"
+    else:
+        body = f"""
+    <div class="root info-page">
+      <main class="root__main">
+        <p class="info-page__eyebrow"><a href="{back_href}"><em>{html.escape(ui["back_to_edition"])}</em></a></p>
         <h1 class="root__title">About this Book</h1>
         <p class="info-page__lede">
           <em>Broad Listening</em> is a community-authored book from
@@ -1895,28 +1947,71 @@ def render_about_page(configs: list[LanguageConfig]) -> str:
             as a structured GitHub Issue. Specific reports are much easier to review and fix.
           </p>
           <p class="info-page__actions">
-            <a class="button" href="en/index.html">Read the English edition</a>
-            <a class="button button--ghost" href="feedback.html">Problems with the book?</a>
+            <a class="button" href="{relative_href(current_page_rel, "en/index.html")}">Read the English edition</a>
+            <a class="button button--ghost" href="{relative_href(current_page_rel, "en/feedback.html")}">Problems with the book?</a>
           </p>
         </section>
-        {render_site_footer("about.html", "en")}
+        {render_site_footer(current_page_rel, config.code)}
       </main>
     </div>
 """
+        title = "About this Book | Broad Listening"
+
     return page_template(
-        title="About this Book | Broad Listening",
-        lang_attr="en",
-        assets_href="./assets/book.css",
+        title=title,
+        lang_attr=config.lang_attr,
+        assets_href=assets_href,
         body=body,
-        body_class="lang-en",
+        body_class=config.body_class,
     )
 
 
-def render_feedback_page(configs: list[LanguageConfig]) -> str:
-    body = f"""
+def render_feedback_page(config: LanguageConfig, current_page_rel: str) -> str:
+    ui = LANGUAGE_UI[config.code]
+    assets_href = relative_href(current_page_rel, "assets/book.css")
+    back_href = relative_href(current_page_rel, f"{config.code}/index.html")
+
+    if config.code == "ja":
+        body = f"""
     <div class="root info-page">
       <main class="root__main">
-        <p class="info-page__eyebrow"><a href="index.html"><em>← All languages</em></a></p>
+        <p class="info-page__eyebrow"><a href="{back_href}"><em>{html.escape(ui["back_to_edition"])}</em></a></p>
+        <h1 class="root__title">本の問題を報告する</h1>
+        <p class="info-page__lede">
+          本やウェブサイトの具体的な問題は GitHub Issues で報告してください。
+          具体的で確認しやすい報告ほど、レビューと修正がしやすくなります。
+        </p>
+        <section class="info-page__section">
+          <h2>役に立つ Issue の書き方</h2>
+          <ul class="feedback-checklist">
+            <li>問題があるページの正確な URL。</li>
+            <li>該当する文、見出し、画像、表、リンク。</li>
+            <li>何が問題に見えるか、期待する状態は何か。</li>
+            <li>翻訳の問題であれば、英語の該当箇所と、可能なら日本語原文。</li>
+            <li>サイトの問題であれば、ブラウザ、端末、必要に応じてスクリーンショット。</li>
+          </ul>
+          <p class="info-page__actions">
+            <a class="button" href="{SITE_NEW_ISSUE_URL}">GitHub Issue を作成する</a>
+            <a class="button button--ghost" href="{SITE_ISSUES_URL}">既存の Issue を見る</a>
+          </p>
+        </section>
+        <section class="info-page__section">
+          <h2>新しい Issue を作る前に</h2>
+          <p>
+            同じ問題がすでに報告されていないか、簡単に確認してください。
+            既存の Issue がある場合は、新しく作るのではなく不足している情報を追加してください。
+          </p>
+        </section>
+        {render_site_footer(current_page_rel, config.code)}
+      </main>
+    </div>
+"""
+        title = "本の問題を報告する | 選挙を変えたブロードリスニング"
+    else:
+        body = f"""
+    <div class="root info-page">
+      <main class="root__main">
+        <p class="info-page__eyebrow"><a href="{back_href}"><em>{html.escape(ui["back_to_edition"])}</em></a></p>
         <h1 class="root__title">Problems with the book?</h1>
         <p class="info-page__lede">
           Please use GitHub Issues to report concrete problems with the book or this website.
@@ -1943,16 +2038,18 @@ def render_feedback_page(configs: list[LanguageConfig]) -> str:
             If it has, add any missing detail to the existing issue instead of creating a duplicate.
           </p>
         </section>
-        {render_site_footer("feedback.html", "en")}
+        {render_site_footer(current_page_rel, config.code)}
       </main>
     </div>
 """
+        title = "Problems with the Book | Broad Listening"
+
     return page_template(
-        title="Problems with the Book | Broad Listening",
-        lang_attr="en",
-        assets_href="./assets/book.css",
+        title=title,
+        lang_attr=config.lang_attr,
+        assets_href=assets_href,
         body=body,
-        body_class="lang-en",
+        body_class=config.body_class,
     )
 
 
@@ -2306,6 +2403,7 @@ def build_site(repo_root: Path, output_root: Path) -> list[Path]:
         sites[config.code] = build_chapters(repo_root, output_root, config, canonical_map)
 
     language_targets = build_language_targets(sites)
+    english_config = next(config for config in configs if config.code == "en")
 
     generated: list[Path] = []
     root_index = output_root / "index.html"
@@ -2313,16 +2411,24 @@ def build_site(repo_root: Path, output_root: Path) -> list[Path]:
     generated.append(root_index)
 
     about_page = output_root / "about.html"
-    about_page.write_text(render_about_page(configs), encoding="utf-8")
+    about_page.write_text(render_about_page(english_config, "about.html"), encoding="utf-8")
     generated.append(about_page)
 
     feedback_page = output_root / "feedback.html"
-    feedback_page.write_text(render_feedback_page(configs), encoding="utf-8")
+    feedback_page.write_text(render_feedback_page(english_config, "feedback.html"), encoding="utf-8")
     generated.append(feedback_page)
 
     for config in configs:
         lang_dir = output_root / config.code
         lang_dir.mkdir(parents=True, exist_ok=True)
+
+        about_path = lang_dir / "about.html"
+        about_path.write_text(render_about_page(config, f"{config.code}/about.html"), encoding="utf-8")
+        generated.append(about_path)
+
+        feedback_path = lang_dir / "feedback.html"
+        feedback_path.write_text(render_feedback_page(config, f"{config.code}/feedback.html"), encoding="utf-8")
+        generated.append(feedback_path)
 
         index_path = lang_dir / "index.html"
         index_path.write_text(
