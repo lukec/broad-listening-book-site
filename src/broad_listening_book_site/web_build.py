@@ -33,6 +33,7 @@ DESIGN_CREDIT_COMMENT = (
 )
 LANDING_IMAGE = "images/01_broadlistening.png"
 DD2030_URL = "https://dd2030.org/"
+DD2030_JOIN_URL = "https://dd2030.org/join-us"
 SOURCE_REPO_URL = "https://github.com/digitaldemocracy2030/broad-listening-book"
 SITE_REPO_URL = "https://github.com/lukec/broad-listening-book-site"
 SITE_ISSUES_URL = f"{SITE_REPO_URL}/issues"
@@ -1900,6 +1901,9 @@ def render_about_page(config: LanguageConfig, current_page_rel: str) -> str:
             元の原稿は <a href="{SOURCE_REPO_URL}">GitHub</a> で公開されています。
             このウェブ版は <a href="{LICENSE_URL}">CC BY 4.0</a> ライセンスで公開されています。
           </p>
+          <p>
+            DD2030 の活動を支援したい方は、<a href="{DD2030_JOIN_URL}">参加・寄付のページ</a>をご覧ください。
+          </p>
         </section>
         <section class="info-page__section">
           <h2>協力するには</h2>
@@ -1938,6 +1942,9 @@ def render_about_page(config: LanguageConfig, current_page_rel: str) -> str:
           <p>
             The original manuscript remains available on <a href="{SOURCE_REPO_URL}">GitHub</a>.
             This web edition is published under the <a href="{LICENSE_URL}">CC BY 4.0</a> license.
+          </p>
+          <p>
+            If you want to support DD2030's work, see the community's <a href="{DD2030_JOIN_URL}">join and donation page</a>.
           </p>
         </section>
         <section class="info-page__section">
