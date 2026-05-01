@@ -146,7 +146,7 @@ The injected beacon is Cloudflare's standard script:
 <script defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token":"..."}'></script>
 ```
 
-Cloudflare Web Analytics is JavaScript-based, so it reports browser page views for readers who load the authenticated pages and run the beacon. It will not count the password form, `/logout`, or clients that block the beacon script.
+Cloudflare Web Analytics is JavaScript-based, so it reports browser page views for clients that load pages and run the beacon. The Worker injects the beacon into book HTML and the login page, but not `/logout`.
 
 ## Cloudflare Deploy Scaffold
 
@@ -168,6 +168,46 @@ Expected deploy order:
 5. apply Terraform in `infra/cloudflare`
 
 Terraform assumes the Worker service already exists, because the Worker code and secrets are still deployed manually via Wrangler.
+
+## Post-deploy validation
+
+After `npm run deploy:worker`, record the Worker version printed by Wrangler and the manuscript revision used for the build:
+
+```bash
+git -C ../broad-listening-book branch --show-current
+git -C ../broad-listening-book log -1 --oneline
+```
+
+Then run a small live smoke test against Cloudflare:
+
+```bash
+DEPLOY_TAG="$(git -C ../broad-listening-book rev-parse --short HEAD)"
+
+curl -sSL -D /tmp/blb-en-chapter.headers \
+  "https://broadlisteningbook.com/en/02_broad_listening_vs_surveys.html?deploy=${DEPLOY_TAG}" \
+  -o /tmp/blb-en-chapter.html
+rg '^HTTP/' /tmp/blb-en-chapter.headers
+rg -o '<title>[^<]+' /tmp/blb-en-chapter.html | head -1
+rg -c 'static\.cloudflareinsights\.com/beacon\.min\.js|data-cf-beacon' /tmp/blb-en-chapter.html
+
+curl -sSL "https://broadlisteningbook.com/en/?deploy=${DEPLOY_TAG}" -o /tmp/blb-en-index.html
+rg '02_broad_listening_vs_surveys' /tmp/blb-en-index.html | head
+
+encoded_path="$(node -e 'console.log(encodeURI("/ja/01_ブロードリスニングとは何か？"))')"
+curl -sSI "https://broadlisteningbook.com${encoded_path}?deploy=${DEPLOY_TAG}" | sed -n '1,10p'
+
+curl -sSL "https://broadlisteningbook.com/en/about.html?deploy=${DEPLOY_TAG}" -o /tmp/blb-en-about.html
+curl -sSL "https://broadlisteningbook.com/ja/about.html?deploy=${DEPLOY_TAG}" -o /tmp/blb-ja-about.html
+rg 'https://dd2030.org/join-us|https://x.com/lukec' /tmp/blb-en-about.html /tmp/blb-ja-about.html
+```
+
+Expected results:
+
+- The English chapter follows Cloudflare's extensionless redirect and ends at `200`.
+- The chapter HTML has the expected `<title>` and exactly one Cloudflare Web Analytics beacon match.
+- The English index links to the deployed chapter.
+- A protected Japanese chapter redirects to `/login` with `X-Robots-Tag: noindex, nofollow, noarchive`.
+- English and Japanese About pages are public and include the DD2030 support link and `@lukec` link.
 
 ## License
 

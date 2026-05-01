@@ -125,6 +125,14 @@ If a change affects rendering, inspect the generated `site/` pages in a browser.
 
 When Worker and Terraform code are added, extend this section with exact verification commands instead of leaving them implicit.
 
+After deploying to Cloudflare, run the `README.md` post-deploy validation checklist and report:
+
+- manuscript branch and commit used for the build
+- Worker version ID printed by Wrangler
+- public English page/index checks
+- protected Japanese redirect and `X-Robots-Tag` check
+- About page support-link checks
+
 ## Editing Guidance
 
 - Prefer small, inspectable changes over broad rewrites.
