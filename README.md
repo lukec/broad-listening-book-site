@@ -347,7 +347,7 @@ Expected results:
 - The English index links to the deployed chapter.
 - A protected Japanese chapter redirects to `/login` with `X-Robots-Tag: noindex, nofollow, noarchive`.
 - English and Japanese About pages are public and include the DD2030 support link and `@lukec` link.
-- `check:live-images` reports zero broken image URLs across public crawlable pages. Protected or redirected pages are skipped unless you run the check in an authenticated context.
+- `check:live-images` exits nonzero if any public crawlable page has a broken image URL. Protected or redirected pages are skipped unless you run the check in an authenticated context. For a clean release, this should report zero image failures; if manuscript-owned image references are knowingly missing, record them separately instead of ignoring new failures.
 - A reader-listening POST to `/api/listening/submit` accepts a valid anonymous response.
 - A reader-listening POST with blocked content returns `blocked_content`.
 - `npm run listening:export -- --remote --format jsonl` returns accepted listening records without committing the export.
