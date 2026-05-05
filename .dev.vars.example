@@ -1,3 +1,7 @@
 SHARED_PASSWORD=replace-with-shared-preview-password
 COOKIE_SIGNING_SECRET=replace-with-a-long-random-secret
 CLOUDFLARE_WEB_ANALYTICS_TOKEN=
+LISTENING_ENABLED=true
+LISTENING_REQUIRE_TURNSTILE=false
+LISTENING_EXPORT_TOKEN=replace-with-a-long-random-export-token
+TURNSTILE_SECRET_KEY=

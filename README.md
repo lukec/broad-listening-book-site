@@ -110,6 +110,7 @@ cd ~/src/broad-listening-book-site
 uv run broad-book-build
 npm install --ignore-scripts
 cp .dev.vars.example .dev.vars
+npm run d1:migrate:local
 npm run preview:worker
 ```
 
@@ -128,6 +129,117 @@ To clear the session cookie, visit:
 Login POSTs are also rate-limited in the Worker using Cloudflare's rate limiting binding:
 
 - 10 attempts per 60 seconds per client IP, per Cloudflare location
+
+Reader-listening POSTs are rate-limited separately:
+
+- 12 submissions per 60 seconds per client IP, per Cloudflare location
+
+## Reader Listening
+
+Reader listening lets a reader highlight book text, choose `Contribute a perspective`, and submit an anonymous response tied to that passage. It is a private listening record, not a public comment system. Site and book problems still go through GitHub Issues.
+
+The implementation lives in:
+
+- `src/broad_listening_book_site/web_build.py`
+  static highlight UI and client-side submit flow
+- `worker/src/index.js`
+  `/api/listening/submit` and protected export endpoints
+- `worker/src/listeningModeration.js`
+  deterministic low-cost blocking rules
+- `worker/migrations/`
+  D1 schema
+- `scripts/export-listening.mjs`
+  JSONL/CSV export helper
+- `spec/LISTEN-PLAN.md`
+  product spec and implementation notes
+
+### Local D1 Setup
+
+The local D1 database is created by Wrangler/Miniflare from `wrangler.jsonc`. Apply migrations before testing submissions:
+
+```bash
+npm run d1:migrate:local
+```
+
+Then run the Worker:
+
+```bash
+npm run preview:worker
+```
+
+Submit a local smoke-test response:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:8787/api/listening/submit" \
+  -H "Origin: http://127.0.0.1:8787" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schemaVersion": 1,
+    "lang": "en",
+    "pagePath": "/en/01_what_is_broad_listening.html",
+    "pageUrl": "http://127.0.0.1:8787/en/01_what_is_broad_listening.html",
+    "pageTitle": "Chapter 1: What Is Broad Listening?",
+    "chapterId": "01_what_is_broad_listening",
+    "chapterTitle": "Chapter 1: What Is Broad Listening?",
+    "nearestHeading": "Broad Listening: A Technology for Hearing Many Voices",
+    "selectionText": "Broad listening is a technology for hearing the voices of many people.",
+    "lens": "missing_voice",
+    "responseText": "I would like to hear more from people who are uncomfortable writing in public forms."
+  }'
+```
+
+Submit a blocked-content smoke test without using offensive language:
+
+```bash
+curl -sS -X POST "http://127.0.0.1:8787/api/listening/submit" \
+  -H "Origin: http://127.0.0.1:8787" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "schemaVersion": 1,
+    "lang": "en",
+    "pagePath": "/en/01_what_is_broad_listening.html",
+    "pageUrl": "http://127.0.0.1:8787/en/01_what_is_broad_listening.html",
+    "pageTitle": "Chapter 1: What Is Broad Listening?",
+    "chapterId": "01_what_is_broad_listening",
+    "chapterTitle": "Chapter 1: What Is Broad Listening?",
+    "nearestHeading": "Broad Listening: A Technology for Hearing Many Voices",
+    "selectionText": "Broad listening is a technology for hearing the voices of many people.",
+    "lens": "question",
+    "responseText": "Please contact me at test@example.com."
+  }'
+```
+
+The accepted response should return `{"ok":true,...}`. The blocked response should return `{"ok":false,"code":"blocked_content"}`.
+
+### Export Listening Data
+
+Export JSONL from local D1:
+
+```bash
+npm run listening:export -- --format jsonl --output listening-exports/local-responses.jsonl
+```
+
+Export CSV from the deployed D1 database:
+
+```bash
+npm run listening:export -- --remote --format csv --output listening-exports/remote-responses.csv
+```
+
+Useful filters:
+
+```bash
+npm run listening:export -- --remote --lang ja --since 2026-05-01 --until 2026-05-31
+```
+
+Keep exports in `listening-exports/` or another ignored local directory. Do not commit raw response exports.
+When querying local D1, run one export at a time; concurrent local D1 reads can briefly hit SQLite lock contention under Wrangler dev.
+
+The Worker also exposes protected HTTP exports:
+
+- `/api/listening/export.jsonl`
+- `/api/listening/export.csv`
+
+These require `Authorization: Bearer <LISTENING_EXPORT_TOKEN>`.
 
 ## Cloudflare Web Analytics
 
@@ -155,7 +267,9 @@ This repo now includes:
 - `wrangler.jsonc`
   Worker + static-asset configuration
 - `worker/src/`
-  custom login flow, cookie signing, auth scopes, robots handling
+  custom login flow, cookie signing, auth scopes, robots handling, listening submit/export API
+- `worker/migrations/`
+  D1 schema migrations
 - `infra/cloudflare/`
   Terraform for custom-domain bindings and optional DNSSEC
 
@@ -163,11 +277,34 @@ Expected deploy order:
 
 1. build the site locally
 2. preview locally
-3. set Worker secrets with Wrangler
-4. deploy the Worker with Wrangler
-5. apply Terraform in `infra/cloudflare`
+3. create the production D1 database and replace the placeholder `database_id` in `wrangler.jsonc`
+4. apply D1 migrations locally and remotely
+5. set Worker secrets with Wrangler
+6. deploy the Worker with Wrangler
+7. apply Terraform in `infra/cloudflare`
 
 Terraform assumes the Worker service already exists, because the Worker code and secrets are still deployed manually via Wrangler.
+
+Create the production D1 database once:
+
+```bash
+npx wrangler d1 create broad-listening-book-listening
+```
+
+Copy the returned `database_id` into `wrangler.jsonc`, replacing `00000000-0000-0000-0000-000000000000`, then apply the remote migration:
+
+```bash
+npm run d1:migrate:remote
+```
+
+Set listening-related secrets when needed:
+
+```bash
+npm run cf:secret:listening-export
+npm run cf:secret:turnstile
+```
+
+`TURNSTILE_SECRET_KEY` is only required if `LISTENING_REQUIRE_TURNSTILE` is set to `true`.
 
 ## Post-deploy validation
 
@@ -208,6 +345,9 @@ Expected results:
 - The English index links to the deployed chapter.
 - A protected Japanese chapter redirects to `/login` with `X-Robots-Tag: noindex, nofollow, noarchive`.
 - English and Japanese About pages are public and include the DD2030 support link and `@lukec` link.
+- A reader-listening POST to `/api/listening/submit` accepts a valid anonymous response.
+- A reader-listening POST with blocked content returns `blocked_content`.
+- `npm run listening:export -- --remote --format jsonl` returns accepted listening records without committing the export.
 
 ## License
 

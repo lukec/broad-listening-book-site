@@ -100,6 +100,23 @@ LANGUAGE_UI = {
         "report_problem": "Problems with the book?",
         "share_passage": "Share passage",
         "copied_passage": "Copied",
+        "contribute_perspective": "Contribute a perspective",
+        "listening_dialog_title": "Add to the listening record",
+        "listening_prompt_label": "What should this passage help us hear?",
+        "listening_body": "Share a perspective, concern, example, missing voice, or question. Your anonymous response will be stored with this passage for private review and analysis.",
+        "listening_lens_resonates": "Resonates",
+        "listening_lens_challenge": "Challenge",
+        "listening_lens_missing_voice": "Missing voice",
+        "listening_lens_example": "Example",
+        "listening_lens_question": "Question",
+        "listening_response_label": "Your perspective",
+        "listening_placeholder": "Add your perspective in your own words...",
+        "listening_moderation_note": "Obscene, abusive, spammy, or unsafe content is not accepted.",
+        "listening_submit": "Contribute anonymously",
+        "listening_close": "Close",
+        "listening_success": "Thank you. Your anonymous response was added to the listening record.",
+        "listening_blocked": "This response cannot be accepted because it appears to include obscene, abusive, spammy, or unsafe content.",
+        "listening_error": "Your response could not be saved. Please try again later.",
     },
     "ja": {
         "all_languages": "← 言語一覧へ",
@@ -128,6 +145,23 @@ LANGUAGE_UI = {
         "report_problem": "本の問題を報告する",
         "share_passage": "選択箇所を共有",
         "copied_passage": "コピーしました",
+        "contribute_perspective": "視点を寄せる",
+        "listening_dialog_title": "広聴記録に加える",
+        "listening_prompt_label": "この箇所から、どんな声を聞くべきでしょうか？",
+        "listening_body": "視点、懸念、事例、見落とされている声、問いを匿名で共有できます。投稿はこの箇所とともに保存され、非公開でレビューと分析に使われます。",
+        "listening_lens_resonates": "共感",
+        "listening_lens_challenge": "異議",
+        "listening_lens_missing_voice": "見落とされた声",
+        "listening_lens_example": "事例",
+        "listening_lens_question": "問い",
+        "listening_response_label": "あなたの視点",
+        "listening_placeholder": "あなたの視点をあなたの言葉で書いてください...",
+        "listening_moderation_note": "わいせつ、攻撃的、スパム、安全でない内容は受け付けません。",
+        "listening_submit": "匿名で送信",
+        "listening_close": "閉じる",
+        "listening_success": "ありがとうございます。匿名の回答が広聴記録に追加されました。",
+        "listening_blocked": "この回答は、わいせつ、攻撃的、スパム、安全でない内容を含む可能性があるため受け付けられません。",
+        "listening_error": "回答を保存できませんでした。時間をおいてもう一度お試しください。",
     },
 }
 
@@ -944,27 +978,270 @@ td {
   flex: 1 1 auto;
 }
 
-.share-selection {
+.selection-actions {
   position: fixed;
   z-index: 50;
   left: 1rem;
   top: 1rem;
   display: none;
-  padding: 0.7em 0.9em;
+  gap: 0.55rem;
+  align-items: center;
+  max-width: min(92vw, 38rem);
+  padding: 0.45rem;
   border: 0.18rem solid rgb(var(--color-link));
-  border-radius: 999px;
+  border-radius: 2.2rem;
   background: rgb(var(--color-link));
   color: rgb(var(--color-background));
+  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+}
+
+.selection-actions.is-visible {
+  display: inline-flex;
+}
+
+.selection-actions__button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 3.4rem;
+  padding: 0.68em 0.9em;
+  border: 0;
+  border-radius: 1.7rem;
+  background: transparent;
+  color: inherit;
   font-family: inherit;
   font-size: 1.4rem;
   font-weight: bold;
   line-height: 1;
-  box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.selection-actions__button--primary {
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-link));
+}
+
+.listening-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: none;
+  align-items: end;
+  justify-content: center;
+  padding: 1.4rem;
+}
+
+.listening-dialog.is-visible {
+  display: flex;
+}
+
+.listening-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.34);
+}
+
+.listening-dialog__panel {
+  position: relative;
+  width: min(100%, 72rem);
+  max-height: min(86vh, 76rem);
+  overflow: auto;
+  padding: clamp(1.8rem, 3vw, 3rem);
+  border: 0.18rem solid rgb(var(--color-link));
+  border-radius: 0.8rem;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-text));
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.28);
+}
+
+.listening-dialog__close {
+  position: absolute;
+  top: 1.2rem;
+  right: 1.2rem;
+  width: 3.8rem;
+  height: 3.8rem;
+  border: 0.16rem solid rgb(var(--color-link));
+  border-radius: 50%;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-link));
+  font-family: inherit;
+  font-size: 2.5rem;
+  line-height: 1;
   cursor: pointer;
 }
 
-.share-selection.is-visible {
+.listening-dialog__title {
+  margin: 0;
+  padding-right: 4.5rem;
+  font-size: var(--type-large);
+  line-height: 1.08;
+}
+
+.listening-dialog__intro {
+  margin: 0.85em 0 0;
+  font-size: var(--type-small);
+  line-height: 1.35;
+}
+
+.listening-dialog__quote {
+  margin: 1.1em 0 0;
+  padding: 0.9em 1em;
+  border-left: 0.35rem solid rgb(var(--color-link));
+  background: rgba(var(--color-text), 0.055);
+  font-size: var(--type-x-small);
+  line-height: 1.35;
+}
+
+.listening-dialog__form {
+  display: grid;
+  gap: 1.1em;
+  margin-top: 1.1em;
+}
+
+.listening-dialog__label,
+.listening-dialog__legend {
+  display: block;
+  margin: 0;
+  font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
+  font-size: var(--type-x-small);
+  font-weight: bold;
+  line-height: 1.25;
+}
+
+.listening-dialog__fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.listening-dialog__lenses {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.7em;
+}
+
+.listening-dialog__lens {
+  position: relative;
   display: inline-flex;
+  align-items: center;
+  min-height: 3.4rem;
+}
+
+.listening-dialog__lens input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.listening-dialog__lens span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 3.4rem;
+  padding: 0.65em 0.85em;
+  border: 0.14rem solid rgba(var(--color-text), 0.38);
+  border-radius: 1.7rem;
+  font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
+  font-size: 1.35rem;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.listening-dialog__lens input:focus-visible + span,
+.listening-dialog__lens input:checked + span {
+  border-color: rgb(var(--color-link));
+  background: rgb(var(--color-link));
+  color: rgb(var(--color-background));
+}
+
+.listening-dialog__textarea {
+  width: 100%;
+  min-height: 12rem;
+  margin-top: 0.55em;
+  padding: 0.85em 0.9em;
+  border: 0.16rem solid rgba(var(--color-text), 0.45);
+  border-radius: 0.45rem;
+  background: rgb(var(--color-background));
+  color: rgb(var(--color-text));
+  font: inherit;
+  font-size: var(--type-x-small);
+  line-height: 1.35;
+  resize: vertical;
+}
+
+.listening-dialog__note {
+  margin: 0;
+  font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
+  font-size: 1.25rem;
+  line-height: 1.35;
+}
+
+.listening-dialog__status {
+  min-height: 1.5em;
+  margin: 0;
+  font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
+  font-size: 1.35rem;
+  font-weight: bold;
+  line-height: 1.35;
+}
+
+.listening-dialog__status.is-error {
+  color: #9b1c31;
+}
+
+.listening-dialog__status.is-success {
+  color: #115d42;
+}
+
+.listening-dialog__submit {
+  justify-self: start;
+  min-height: 3.8rem;
+  padding: 0.72em 1.05em;
+  border: 0.18rem solid rgb(var(--color-link));
+  border-radius: 1.9rem;
+  background: rgb(var(--color-link));
+  color: rgb(var(--color-background));
+  font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
+  font-size: 1.45rem;
+  font-weight: bold;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.listening-dialog__submit:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+@media screen and (min-width: 50em) {
+  .listening-dialog {
+    align-items: center;
+  }
+}
+
+@media screen and (max-width: 34em) {
+  .selection-actions {
+    max-width: calc(100vw - 2rem);
+  }
+
+  .selection-actions__button {
+    font-size: 1.25rem;
+  }
+
+  .listening-dialog {
+    padding: 0;
+  }
+
+  .listening-dialog__panel {
+    width: 100%;
+    max-height: 88vh;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 0.8rem 0.8rem 0 0;
+  }
 }
 
 .mobile-rail {
@@ -1203,13 +1480,25 @@ if (continueReadingLink) {
 }
 
 const chapter = document.querySelector('.chapter');
+const selectionActions = document.querySelector('[data-selection-actions]');
 const shareSelectionButton = document.querySelector('[data-share-selection]');
-if (chapter && shareSelectionButton) {
+const listeningOpenButton = document.querySelector('[data-listening-open]');
+const listeningDialog = document.querySelector('[data-listening-dialog]');
+const listeningForm = document.querySelector('[data-listening-form]');
+const listeningTextarea = document.querySelector('[data-listening-text]');
+const listeningQuote = document.querySelector('[data-listening-selection]');
+const listeningStatus = document.querySelector('[data-listening-status]');
+if (chapter && selectionActions && shareSelectionButton && listeningOpenButton && listeningDialog && listeningForm && listeningTextarea && listeningQuote && listeningStatus) {
   let selectedText = '';
+  let selectedNearestHeading = '';
+  let dialogOpen = false;
+  let lastFocusedElement = null;
 
-  const hideShareSelection = () => {
-    shareSelectionButton.classList.remove('is-visible');
-    shareSelectionButton.setAttribute('aria-hidden', 'true');
+  const normalizeSelectedText = (value) => value.replace(/[\\s]+/g, ' ').trim();
+
+  const hideSelectionActions = () => {
+    selectionActions.classList.remove('is-visible');
+    selectionActions.setAttribute('aria-hidden', 'true');
   };
 
   const selectionInsideChapter = (selection) => {
@@ -1223,44 +1512,154 @@ if (chapter && shareSelectionButton) {
     return Boolean(anchorNode && focusNode && chapter.contains(anchorNode) && chapter.contains(focusNode));
   };
 
-  const showShareSelection = () => {
+  const nearestHeadingForRange = (range) => {
+    const headings = Array.from(chapter.querySelectorAll('h2, h3, h4, h5, h6'));
+    let nearest = '';
+    for (const heading of headings) {
+      const position = heading.compareDocumentPosition(range.startContainer);
+      if (position & Node.DOCUMENT_POSITION_PRECEDING) {
+        continue;
+      }
+      nearest = normalizeSelectedText(heading.textContent || '');
+    }
+    return nearest;
+  };
+
+  const showSelectionActions = () => {
+    if (dialogOpen) return;
     const selection = window.getSelection();
-    const text = selection?.toString().replace(/[\\s]+/g, ' ').trim() || '';
+    const text = normalizeSelectedText(selection?.toString() || '');
     if (text.length < 12 || !selectionInsideChapter(selection)) {
-      hideShareSelection();
+      hideSelectionActions();
       return;
     }
 
-    selectedText = text.length > 480 ? `${text.slice(0, 477)}...` : text;
+    selectedText = text.length > 1000 ? `${text.slice(0, 997)}...` : text;
     const range = selection.getRangeAt(0);
+    selectedNearestHeading = nearestHeadingForRange(range);
     const rect = range.getBoundingClientRect();
-    const left = Math.min(Math.max(rect.left, 12), window.innerWidth - 160);
-    const top = Math.max(rect.top - 48, 12);
-    shareSelectionButton.style.left = `${left}px`;
-    shareSelectionButton.style.top = `${top}px`;
+    const menuWidth = Math.min(380, window.innerWidth - 24);
+    const left = Math.min(Math.max(rect.left, 12), window.innerWidth - menuWidth - 12);
+    const top = Math.max(rect.top - 58, 12);
+    selectionActions.style.left = `${left}px`;
+    selectionActions.style.top = `${top}px`;
     shareSelectionButton.textContent = shareSelectionButton.dataset.shareLabel || 'Share passage';
-    shareSelectionButton.removeAttribute('aria-hidden');
-    shareSelectionButton.classList.add('is-visible');
+    selectionActions.removeAttribute('aria-hidden');
+    selectionActions.classList.add('is-visible');
   };
 
   const shareSelectedText = async () => {
     if (!selectedText) return;
     const url = window.location.href.split('#')[0];
-    const text = `"${selectedText}"\n\n${document.title}`;
+    const shareText = selectedText.length > 480 ? `${selectedText.slice(0, 477)}...` : selectedText;
+    const text = `"${shareText}"\n\n${document.title}`;
     try {
       if (navigator.share) {
         await navigator.share({ title: document.title, text, url });
       } else if (navigator.clipboard) {
         await navigator.clipboard.writeText(`${text}\n${url}`);
         shareSelectionButton.textContent = shareSelectionButton.dataset.copiedLabel || 'Copied';
-        window.setTimeout(hideShareSelection, 1200);
+        window.setTimeout(hideSelectionActions, 1200);
       }
     } catch (_) {}
   };
 
-  document.addEventListener('selectionchange', () => window.setTimeout(showShareSelection, 80));
-  document.addEventListener('scroll', hideShareSelection, { passive: true });
+  const setListeningStatus = (message, kind = '') => {
+    listeningStatus.textContent = message;
+    listeningStatus.classList.toggle('is-error', kind === 'error');
+    listeningStatus.classList.toggle('is-success', kind === 'success');
+  };
+
+  const openListeningDialog = () => {
+    if (!selectedText) return;
+    dialogOpen = true;
+    lastFocusedElement = document.activeElement;
+    listeningQuote.textContent = selectedText;
+    listeningTextarea.value = '';
+    setListeningStatus('');
+    listeningDialog.removeAttribute('aria-hidden');
+    listeningDialog.classList.add('is-visible');
+    hideSelectionActions();
+    window.setTimeout(() => listeningTextarea.focus(), 50);
+  };
+
+  const closeListeningDialog = () => {
+    dialogOpen = false;
+    listeningDialog.classList.remove('is-visible');
+    listeningDialog.setAttribute('aria-hidden', 'true');
+    if (lastFocusedElement && typeof lastFocusedElement.focus === 'function') {
+      lastFocusedElement.focus();
+    }
+  };
+
+  const selectedLens = () => {
+    const checked = listeningForm.querySelector('input[name="lens"]:checked');
+    return checked ? checked.value : 'resonates';
+  };
+
+  const buildListeningPayload = () => {
+    const pageUrl = window.location.href.split('#')[0];
+    return {
+      schemaVersion: 1,
+      lang: chapter.dataset.listeningLang || document.documentElement.lang || '',
+      pagePath: window.location.pathname,
+      pageUrl,
+      pageTitle: document.title,
+      chapterId: chapter.dataset.listeningChapterId || '',
+      chapterTitle: chapter.dataset.listeningChapterTitle || '',
+      nearestHeading: selectedNearestHeading,
+      selectionText: selectedText,
+      lens: selectedLens(),
+      responseText: listeningTextarea.value,
+    };
+  };
+
+  const submitListeningResponse = async (event) => {
+    event.preventDefault();
+    const submitButton = listeningForm.querySelector('[data-listening-submit]');
+    if (!selectedText || !listeningTextarea.value.trim()) return;
+    if (submitButton) submitButton.disabled = true;
+    setListeningStatus('');
+    try {
+      const response = await fetch('/api/listening/submit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify(buildListeningPayload()),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (response.ok && result.ok) {
+        setListeningStatus(listeningForm.dataset.successMessage || 'Thank you.', 'success');
+        listeningTextarea.value = '';
+        window.setTimeout(closeListeningDialog, 1500);
+      } else if (result.code === 'blocked_content') {
+        setListeningStatus(listeningForm.dataset.blockedMessage || 'This response cannot be accepted.', 'error');
+      } else {
+        setListeningStatus(listeningForm.dataset.errorMessage || 'Your response could not be saved.', 'error');
+      }
+    } catch (_) {
+      setListeningStatus(listeningForm.dataset.errorMessage || 'Your response could not be saved.', 'error');
+    } finally {
+      if (submitButton) submitButton.disabled = false;
+    }
+  };
+
+  document.addEventListener('selectionchange', () => window.setTimeout(showSelectionActions, 80));
+  document.addEventListener('scroll', () => {
+    if (!dialogOpen) hideSelectionActions();
+  }, { passive: true });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && dialogOpen) closeListeningDialog();
+  });
+  selectionActions.addEventListener('pointerdown', (event) => event.preventDefault());
   shareSelectionButton.addEventListener('click', shareSelectedText);
+  listeningOpenButton.addEventListener('click', openListeningDialog);
+  listeningDialog.addEventListener('click', (event) => {
+    if (event.target.matches('[data-listening-close]')) closeListeningDialog();
+  });
+  listeningForm.addEventListener('submit', submitListeningResponse);
 }
 """
 
@@ -1627,6 +2026,35 @@ def soften_translator_meta(html_text: str) -> str:
     return html_text
 
 
+def inject_web_book_features(html_text: str, config: LanguageConfig, source_rel: str) -> str:
+    how_to_read_files = {
+        "en": "00_how_to_read_this_book.md",
+        "ja": "00_本書の読みかた.md",
+    }
+    if source_rel != how_to_read_files.get(config.code):
+        return html_text
+
+    if 'id="features-of-the-web-book"' in html_text or 'id="web-book-features"' in html_text:
+        return html_text
+
+    if config.code == "ja":
+        section_html = """
+<h2 id="web-book-features">Web版の機能</h2>
+<p>ブロードリスニングは、読者を単なる受け手ではなく、重要なシグナルを持つ人として扱うところから始まります。このWeb版では、本文の一部を選択して、その箇所を共有したり、該当箇所に紐づく匿名の視点をリスニング記録に加えたりできます。</p>
+<p>ある箇所を読んで、具体的な事例、見落とされている声、違和感、異議、あるいは次に問うべきことが浮かんだ場合は、<strong>視点を寄せる</strong>を使ってください。投稿は、あなたが反応した本文と一緒に非公開で保存されます。公開コメント欄でも、討論の場でも、投票でもありません。読者の声をあとで横断的に聞き取るための素材です。</p>
+<p>誤字、リンク切れ、表示崩れ、翻訳修正など、本やWebサイトの具体的な問題は、引き続き<strong>本の問題を報告する</strong>リンクから報告してください。</p>
+"""
+    else:
+        section_html = """
+<h2 id="features-of-the-web-book">Features of the Web Book</h2>
+<p>Broad listening starts by treating readers as sources of signal, not just as an audience. In this web edition, you can highlight any passage and either share it or add an anonymous perspective to the listening record for that exact piece of text.</p>
+<p>Use <strong>Contribute a perspective</strong> when a passage brings up a concrete example, a missing voice, a point of tension, a challenge, or a question worth carrying forward. Your response is stored privately with the passage that prompted it. It is not a public comment, a debate thread, or a vote. It gives the book team material to listen across after individual readings.</p>
+<p>Concrete problems with the text or website, such as typos, broken links, formatting issues, or translation corrections, should still be reported through the <strong>Problems with the book?</strong> link so they stay in the issue-tracking flow.</p>
+"""
+
+    return f"{html_text.rstrip()}\n{section_html.strip()}\n"
+
+
 def sidebar_chapter_title(chapter: Chapter) -> str:
     pattern = rf"^{re.escape(chapter.chapter_label)}(?:\s*[:：-]\s*|\s+)"
     return re.sub(pattern, "", chapter.title, count=1).strip() or chapter.title
@@ -1710,6 +2138,7 @@ def build_chapters(
             html_body = soften_translator_meta(html_body)
         if config.code == "en" and relative_path in {"11_01_taiwan.md", "11_05_harnessing_connective_action.md"}:
             html_body = style_g0v_wordmark(html_body)
+        html_body = inject_web_book_features(html_body, config, relative_path)
         html_body = fix_relative_assets(
             html_text=html_body,
             repo_root=repo_root,
@@ -2253,6 +2682,78 @@ def render_mobile_rail(
           {sidebar_title}
           <ul class="intro__sections">{section_items}</ul>
       </div>
+	"""
+
+
+def render_listening_tools(ui: dict[str, str]) -> str:
+    lenses = [
+        ("resonates", ui["listening_lens_resonates"]),
+        ("challenge", ui["listening_lens_challenge"]),
+        ("missing_voice", ui["listening_lens_missing_voice"]),
+        ("example", ui["listening_lens_example"]),
+        ("question", ui["listening_lens_question"]),
+    ]
+    lens_controls = "\n".join(
+        f"""
+              <label class="listening-dialog__lens">
+                <input type="radio" name="lens" value="{value}"{" checked" if value == "resonates" else ""}>
+                <span>{html.escape(label)}</span>
+              </label>"""
+        for value, label in lenses
+    )
+    return f"""
+        <div class="selection-actions" data-selection-actions aria-hidden="true">
+          <button
+            class="selection-actions__button"
+            type="button"
+            data-share-selection
+            data-share-label="{html.escape(ui["share_passage"], quote=True)}"
+            data-copied-label="{html.escape(ui["copied_passage"], quote=True)}"
+          >{html.escape(ui["share_passage"])}</button>
+          <button
+            class="selection-actions__button selection-actions__button--primary"
+            type="button"
+            data-listening-open
+          >{html.escape(ui["contribute_perspective"])}</button>
+        </div>
+        <div class="listening-dialog" data-listening-dialog aria-hidden="true">
+          <div class="listening-dialog__backdrop" data-listening-close></div>
+          <section class="listening-dialog__panel" role="dialog" aria-modal="true" aria-labelledby="listening-dialog-title">
+            <button class="listening-dialog__close" type="button" data-listening-close aria-label="{html.escape(ui["listening_close"], quote=True)}">×</button>
+            <h2 class="listening-dialog__title" id="listening-dialog-title">{html.escape(ui["listening_dialog_title"])}</h2>
+            <p class="listening-dialog__intro">{html.escape(ui["listening_body"])}</p>
+            <blockquote class="listening-dialog__quote" data-listening-selection></blockquote>
+            <form
+              class="listening-dialog__form"
+              data-listening-form
+              data-success-message="{html.escape(ui["listening_success"], quote=True)}"
+              data-blocked-message="{html.escape(ui["listening_blocked"], quote=True)}"
+              data-error-message="{html.escape(ui["listening_error"], quote=True)}"
+            >
+              <fieldset class="listening-dialog__fieldset">
+                <legend class="listening-dialog__legend">{html.escape(ui["listening_prompt_label"])}</legend>
+                <div class="listening-dialog__lenses">
+                  {lens_controls}
+                </div>
+              </fieldset>
+              <label class="listening-dialog__label">
+                <span>{html.escape(ui["listening_response_label"])}</span>
+                <textarea
+                  class="listening-dialog__textarea"
+                  data-listening-text
+                  name="response"
+                  minlength="3"
+                  maxlength="2000"
+                  required
+                  placeholder="{html.escape(ui["listening_placeholder"], quote=True)}"
+                ></textarea>
+              </label>
+              <p class="listening-dialog__note">{html.escape(ui["listening_moderation_note"])}</p>
+              <p class="listening-dialog__status" data-listening-status role="status" aria-live="polite"></p>
+              <button class="listening-dialog__submit" type="submit" data-listening-submit>{html.escape(ui["listening_submit"])}</button>
+            </form>
+          </section>
+        </div>
 """
 
 
@@ -2270,6 +2771,8 @@ def render_chapter_page(
     ui = LANGUAGE_UI[config.code]
     reading_meta = html.escape(json.dumps({"href": current_page_rel, "title": chapter.title}), quote=True)
     body_html = strip_leading_heading(chapter.body_html)
+    listening_chapter_id = html.escape(Path(chapter.output_rel).stem, quote=True)
+    listening_chapter_title = html.escape(chapter.title, quote=True)
     title_text = sidebar_chapter_title(chapter)
     display_title, display_subtitle = split_display_title(title_text) if config.code == "en" else (title_text, "")
     next_title = ""
@@ -2298,7 +2801,7 @@ def render_chapter_page(
           next_href=next_href,
           next_title=next_title,
       )}
-      <section class="content chapter">
+      <section class="content chapter" data-listening-lang="{html.escape(config.code, quote=True)}" data-listening-chapter-id="{listening_chapter_id}" data-listening-chapter-title="{listening_chapter_title}">
         {render_mobile_rail(
             current_page_rel=current_page_rel,
             config=config,
@@ -2317,14 +2820,7 @@ def render_chapter_page(
           {footer_right}
         </nav>
         {render_site_footer(current_page_rel, config.code)}
-        <button
-          class="share-selection"
-          type="button"
-          data-share-selection
-          data-share-label="{html.escape(ui["share_passage"])}"
-          data-copied-label="{html.escape(ui["copied_passage"])}"
-          aria-hidden="true"
-        >{html.escape(ui["share_passage"])}</button>
+        {render_listening_tools(ui)}
       </section>
     </main>
 """

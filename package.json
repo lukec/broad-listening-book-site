@@ -11,8 +11,13 @@
     "check:site": "node ./scripts/check-site-built.mjs",
     "preview:worker": "npm run check:site && wrangler dev",
     "deploy:worker": "npm run check:site && wrangler deploy",
+    "d1:migrate:local": "wrangler d1 migrations apply broad-listening-book-listening --local",
+    "d1:migrate:remote": "wrangler d1 migrations apply broad-listening-book-listening --remote",
+    "listening:export": "node ./scripts/export-listening.mjs",
     "cf:secret:password": "wrangler secret put SHARED_PASSWORD",
-    "cf:secret:cookie": "wrangler secret put COOKIE_SIGNING_SECRET"
+    "cf:secret:cookie": "wrangler secret put COOKIE_SIGNING_SECRET",
+    "cf:secret:listening-export": "wrangler secret put LISTENING_EXPORT_TOKEN",
+    "cf:secret:turnstile": "wrangler secret put TURNSTILE_SECRET_KEY"
   },
   "devDependencies": {
     "wrangler": ">=4 <6"

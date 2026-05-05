@@ -5,12 +5,18 @@ import {
   passwordMatches,
   readSignedSession,
 } from "./auth.js";
+import { moderateListeningText } from "./listeningModeration.js";
 
 const SHAPE_UP_TYPEKIT_CSS = "https://use.typekit.net/xig7qap.css";
 const CLOUDFLARE_WEB_ANALYTICS_SRC = "https://static.cloudflareinsights.com/beacon.min.js";
 const NOINDEX_POLICY = "noindex, nofollow, noarchive";
 const LOGIN_PATH = "/login";
 const LOGOUT_PATH = "/logout";
+const LISTENING_SUBMIT_PATH = "/api/listening/submit";
+const LISTENING_EXPORT_JSONL_PATH = "/api/listening/export.jsonl";
+const LISTENING_EXPORT_CSV_PATH = "/api/listening/export.csv";
+const LISTENING_ALLOWED_LENSES = new Set(["resonates", "challenge", "missing_voice", "example", "question"]);
+const LISTENING_MAX_BODY_BYTES = 16 * 1024;
 
 export default {
   async fetch(request, env) {
@@ -32,6 +38,14 @@ export default {
 
     if (url.pathname === LOGOUT_PATH) {
       return handleLogoutRoute(request, config);
+    }
+
+    if (url.pathname === LISTENING_SUBMIT_PATH) {
+      return handleListeningSubmit(request, env, config);
+    }
+
+    if (url.pathname === LISTENING_EXPORT_JSONL_PATH || url.pathname === LISTENING_EXPORT_CSV_PATH) {
+      return handleListeningExport(request, env, config, url.pathname.endsWith(".csv") ? "csv" : "jsonl");
     }
 
     if (shouldProtectPath(url.pathname, config)) {
@@ -118,6 +132,176 @@ async function handleLogoutRoute(request, config) {
   return response;
 }
 
+async function handleListeningSubmit(request, env, config) {
+  if (request.method !== "POST") {
+    return methodNotAllowed(["POST"]);
+  }
+
+  if (!config.listeningEnabled) {
+    return jsonResponse({ ok: false, code: "listening_disabled" }, 503);
+  }
+
+  if (!env.LISTENING_DB) {
+    return jsonResponse({ ok: false, code: "listening_database_missing" }, 500);
+  }
+
+  const url = new URL(request.url);
+  const origin = request.headers.get("Origin");
+  if (origin && origin !== url.origin) {
+    return jsonResponse({ ok: false, code: "invalid_origin" }, 403);
+  }
+
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    return jsonResponse({ ok: false, code: "invalid_content_type" }, 415);
+  }
+
+  const declaredLength = Number.parseInt(request.headers.get("Content-Length") || "0", 10);
+  if (declaredLength > LISTENING_MAX_BODY_BYTES) {
+    return jsonResponse({ ok: false, code: "payload_too_large" }, 413);
+  }
+
+  const clientIp = request.headers.get("CF-Connecting-IP") || "unknown";
+  const rateLimitResult = await applyListeningRateLimit(env, clientIp);
+  if (!rateLimitResult.success) {
+    return jsonResponse({ ok: false, code: "rate_limited" }, 429);
+  }
+
+  let payload;
+  try {
+    const bodyText = await request.text();
+    if (new TextEncoder().encode(bodyText).length > LISTENING_MAX_BODY_BYTES) {
+      return jsonResponse({ ok: false, code: "payload_too_large" }, 413);
+    }
+    payload = JSON.parse(bodyText);
+  } catch (_) {
+    return jsonResponse({ ok: false, code: "invalid_json" }, 400);
+  }
+
+  const validation = validateListeningPayload(payload, url);
+  if (!validation.ok) {
+    return jsonResponse({ ok: false, code: validation.code }, validation.status);
+  }
+
+  const turnstile = await verifyListeningTurnstile(payload.turnstileToken, config);
+  if (!turnstile.ok) {
+    return jsonResponse({ ok: false, code: turnstile.code }, turnstile.status);
+  }
+
+  const moderation = moderateListeningText([validation.record.selectionText, validation.record.responseText]);
+  if (!moderation.ok) {
+    return jsonResponse({ ok: false, code: "blocked_content" }, 400);
+  }
+
+  const createdAt = new Date().toISOString();
+  const selectionHash = await sha256Hex(validation.record.selectionText);
+  const responseHash = await sha256Hex(validation.record.responseText);
+  const id = `lr_${crypto.randomUUID()}`;
+  const userAgentFamily = parseUserAgentFamily(request.headers.get("User-Agent") || "");
+  const clientCountry = normalizeCountry(request.cf?.country || "");
+
+  try {
+    const duplicate = await findRecentDuplicate(env.LISTENING_DB, selectionHash, responseHash);
+    if (duplicate) {
+      return jsonResponse({ ok: false, code: "duplicate_response" }, 409);
+    }
+
+    await env.LISTENING_DB.prepare(
+      `INSERT INTO listening_responses (
+        id,
+        created_at,
+        lang,
+        page_path,
+        page_url,
+        page_title,
+        chapter_id,
+        chapter_title,
+        nearest_heading,
+        selection_text,
+        selection_text_sha256,
+        lens,
+        response_text,
+        response_text_sha256,
+        moderation_status,
+        moderation_reason,
+        user_agent_family,
+        client_country,
+        turnstile_verified,
+        export_consent,
+        schema_version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        id,
+        createdAt,
+        validation.record.lang,
+        validation.record.pagePath,
+        validation.record.pageUrl,
+        validation.record.pageTitle,
+        validation.record.chapterId,
+        validation.record.chapterTitle,
+        validation.record.nearestHeading,
+        validation.record.selectionText,
+        selectionHash,
+        validation.record.lens,
+        validation.record.responseText,
+        responseHash,
+        "accepted",
+        "",
+        userAgentFamily,
+        clientCountry,
+        turnstile.verified ? 1 : 0,
+        "private_analysis",
+        1,
+      )
+      .run();
+  } catch (_) {
+    return jsonResponse({ ok: false, code: "database_error" }, 500);
+  }
+
+  return jsonResponse({ ok: true, id }, 201);
+}
+
+async function handleListeningExport(request, env, config, format) {
+  if (request.method !== "GET" && request.method !== "HEAD") {
+    return methodNotAllowed(["GET", "HEAD"]);
+  }
+
+  if (!env.LISTENING_DB) {
+    return jsonResponse({ ok: false, code: "listening_database_missing" }, 500);
+  }
+
+  if (!isValidExportAuthorization(request, config)) {
+    return jsonResponse({ ok: false, code: "unauthorized" }, 401);
+  }
+
+  const url = new URL(request.url);
+  const query = buildListeningExportQuery(url.searchParams);
+  if (!query.ok) {
+    return jsonResponse({ ok: false, code: query.code }, 400);
+  }
+
+  let results;
+  try {
+    ({ results } = await env.LISTENING_DB.prepare(query.sql).bind(...query.bindings).all());
+  } catch (_) {
+    return jsonResponse({ ok: false, code: "database_error" }, 500);
+  }
+  const body = format === "csv" ? rowsToCsv(results || []) : rowsToJsonl(results || []);
+  const extension = format === "csv" ? "csv" : "jsonl";
+  const contentType = format === "csv" ? "text/csv; charset=utf-8" : "application/x-ndjson; charset=utf-8";
+
+  return new Response(request.method === "HEAD" ? null : body, {
+    status: 200,
+    headers: {
+      "Content-Type": contentType,
+      "Cache-Control": "no-store",
+      "Content-Disposition": `attachment; filename="broad-listening-responses.${extension}"`,
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 async function authenticateRequest(request, config) {
   if (!config.cookieSigningSecret) {
     return null;
@@ -173,6 +357,10 @@ function loadConfig(env) {
     cookieSigningSecret: env.COOKIE_SIGNING_SECRET,
     sharedPassword: env.SHARED_PASSWORD,
     webAnalyticsToken: String(env.CLOUDFLARE_WEB_ANALYTICS_TOKEN || "").trim(),
+    listeningEnabled: normalizeBoolean(env.LISTENING_ENABLED, true),
+    listeningRequireTurnstile: normalizeBoolean(env.LISTENING_REQUIRE_TURNSTILE, false),
+    listeningExportToken: String(env.LISTENING_EXPORT_TOKEN || "").trim(),
+    turnstileSecretKey: String(env.TURNSTILE_SECRET_KEY || "").trim(),
     defaultAfterLoginPath: "/",
   };
 }
@@ -270,6 +458,304 @@ function buildRobotsTxt(config) {
     "Disallow: /login",
     "Disallow: /logout",
   ].join("\n");
+}
+
+function validateListeningPayload(payload, requestUrl) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return validationError("invalid_payload");
+  }
+
+  if (payload.schemaVersion !== 1) {
+    return validationError("invalid_schema_version");
+  }
+
+  const lang = String(payload.lang || "").trim().toLowerCase();
+  if (!["en", "ja"].includes(lang)) {
+    return validationError("invalid_language");
+  }
+
+  let pageUrl;
+  try {
+    pageUrl = new URL(String(payload.pageUrl || ""), requestUrl.origin);
+  } catch (_) {
+    return validationError("invalid_page_url");
+  }
+
+  const pagePath = normalizePagePath(payload.pagePath || pageUrl.pathname);
+  if (!pagePath || pagePath !== pageUrl.pathname || pageUrl.origin !== requestUrl.origin) {
+    return validationError("invalid_page_url");
+  }
+
+  if (!(pagePath.startsWith("/en/") || pagePath.startsWith("/ja/"))) {
+    return validationError("invalid_page_path");
+  }
+
+  const selectionText = normalizeListeningText(payload.selectionText);
+  if (selectionText.length < 12 || selectionText.length > 1000) {
+    return validationError("invalid_selection");
+  }
+
+  const responseText = normalizeListeningText(payload.responseText);
+  if (responseText.length < 3 || responseText.length > 2000) {
+    return validationError("invalid_response");
+  }
+
+  const lens = String(payload.lens || "").trim().toLowerCase();
+  if (!LISTENING_ALLOWED_LENSES.has(lens)) {
+    return validationError("invalid_lens");
+  }
+
+  if (containsUnsafeMarkup(selectionText) || containsUnsafeMarkup(responseText)) {
+    return validationError("invalid_text");
+  }
+
+  return {
+    ok: true,
+    record: {
+      lang,
+      pagePath,
+      pageUrl: pageUrl.toString(),
+      pageTitle: boundedPlainText(payload.pageTitle, 240),
+      chapterId: boundedPlainText(payload.chapterId, 160),
+      chapterTitle: boundedPlainText(payload.chapterTitle, 240),
+      nearestHeading: boundedPlainText(payload.nearestHeading, 240),
+      selectionText,
+      lens,
+      responseText,
+      turnstileToken: String(payload.turnstileToken || "").trim(),
+    },
+  };
+}
+
+function validationError(code, status = 400) {
+  return { ok: false, code, status };
+}
+
+function normalizePagePath(value) {
+  const pathname = String(value || "").trim();
+  if (!pathname.startsWith("/") || pathname.startsWith("//")) {
+    return "";
+  }
+  return pathname.split("#")[0].split("?")[0];
+}
+
+function normalizeListeningText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function boundedPlainText(value, maxLength) {
+  return normalizeListeningText(value).slice(0, maxLength);
+}
+
+function containsUnsafeMarkup(value) {
+  return /<\/?[a-z][\s\S]*>/i.test(value);
+}
+
+async function applyListeningRateLimit(env, clientIp) {
+  if (!env.LISTENING_SUBMIT_RATE_LIMITER || typeof env.LISTENING_SUBMIT_RATE_LIMITER.limit !== "function") {
+    return { success: true };
+  }
+
+  try {
+    return await env.LISTENING_SUBMIT_RATE_LIMITER.limit({ key: `listen:${clientIp || "unknown"}` });
+  } catch (_) {
+    return { success: true };
+  }
+}
+
+async function verifyListeningTurnstile(token, config) {
+  const turnstileToken = String(token || "").trim();
+
+  if (!config.listeningRequireTurnstile && !turnstileToken) {
+    return { ok: true, verified: false };
+  }
+
+  if (!config.turnstileSecretKey) {
+    return config.listeningRequireTurnstile
+      ? { ok: false, code: "turnstile_not_configured", status: 500 }
+      : { ok: true, verified: false };
+  }
+
+  if (!turnstileToken) {
+    return { ok: false, code: "turnstile_required", status: 400 };
+  }
+
+  const formData = new FormData();
+  formData.set("secret", config.turnstileSecretKey);
+  formData.set("response", turnstileToken);
+
+  try {
+    const response = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+      method: "POST",
+      body: formData,
+    });
+    const result = await response.json();
+    return result.success
+      ? { ok: true, verified: true }
+      : { ok: false, code: "turnstile_failed", status: 400 };
+  } catch (_) {
+    return { ok: false, code: "turnstile_error", status: 502 };
+  }
+}
+
+async function findRecentDuplicate(db, selectionHash, responseHash) {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  return db
+    .prepare(
+      `SELECT id FROM listening_responses
+       WHERE selection_text_sha256 = ? AND response_text_sha256 = ? AND created_at >= ?
+       LIMIT 1`,
+    )
+    .bind(selectionHash, responseHash, cutoff)
+    .first();
+}
+
+function parseUserAgentFamily(userAgent) {
+  const value = String(userAgent || "");
+  if (/Edg\//.test(value)) return "Edge";
+  if (/Firefox\//.test(value)) return "Firefox";
+  if (/Chrome\//.test(value) && !/Chromium\//.test(value)) return "Chrome";
+  if (/Safari\//.test(value) && !/Chrome\//.test(value)) return "Safari";
+  if (/Chromium\//.test(value)) return "Chromium";
+  return value ? "Other" : "Unknown";
+}
+
+function normalizeCountry(value) {
+  const country = String(value || "").trim().toUpperCase();
+  return /^[A-Z]{2}$/.test(country) ? country : "";
+}
+
+async function sha256Hex(value) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function isValidExportAuthorization(request, config) {
+  if (!config.listeningExportToken) {
+    return false;
+  }
+
+  const authorization = request.headers.get("Authorization") || "";
+  if (!authorization.startsWith("Bearer ")) {
+    return false;
+  }
+
+  return authorization.slice("Bearer ".length).trim() === config.listeningExportToken;
+}
+
+const LISTENING_EXPORT_COLUMNS = [
+  "id",
+  "created_at",
+  "lang",
+  "page_path",
+  "page_url",
+  "page_title",
+  "chapter_id",
+  "chapter_title",
+  "nearest_heading",
+  "selection_text",
+  "selection_text_sha256",
+  "lens",
+  "response_text",
+  "response_text_sha256",
+  "moderation_status",
+  "moderation_reason",
+  "user_agent_family",
+  "client_country",
+  "turnstile_verified",
+  "export_consent",
+  "schema_version",
+];
+
+function buildListeningExportQuery(searchParams) {
+  const where = [];
+  const bindings = [];
+  const status = String(searchParams.get("status") || "accepted").trim().toLowerCase();
+
+  if (status && status !== "all") {
+    if (!["accepted"].includes(status)) {
+      return { ok: false, code: "invalid_status" };
+    }
+    where.push("moderation_status = ?");
+    bindings.push(status);
+  }
+
+  const lang = String(searchParams.get("lang") || "").trim().toLowerCase();
+  if (lang) {
+    if (!["en", "ja"].includes(lang)) {
+      return { ok: false, code: "invalid_language" };
+    }
+    where.push("lang = ?");
+    bindings.push(lang);
+  }
+
+  const since = normalizeDateFilter(searchParams.get("since"), "start");
+  if (since === false) {
+    return { ok: false, code: "invalid_since" };
+  }
+  if (since) {
+    where.push("created_at >= ?");
+    bindings.push(since);
+  }
+
+  const until = normalizeDateFilter(searchParams.get("until"), "end");
+  if (until === false) {
+    return { ok: false, code: "invalid_until" };
+  }
+  if (until) {
+    where.push("created_at <= ?");
+    bindings.push(until);
+  }
+
+  const limit = Math.min(normalizePositiveInteger(searchParams.get("limit"), 10000), 50000);
+  const sql = [
+    `SELECT ${LISTENING_EXPORT_COLUMNS.join(", ")}`,
+    "FROM listening_responses",
+    where.length ? `WHERE ${where.join(" AND ")}` : "",
+    "ORDER BY created_at ASC",
+    `LIMIT ${limit}`,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return { ok: true, sql, bindings };
+}
+
+function normalizeDateFilter(value, mode) {
+  if (!value) return "";
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return mode === "end" ? `${text}T23:59:59.999Z` : `${text}T00:00:00.000Z`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(text) && !Number.isNaN(Date.parse(text))) {
+    return new Date(text).toISOString();
+  }
+  return false;
+}
+
+function rowsToJsonl(rows) {
+  return rows.map((row) => JSON.stringify(row)).join("\n") + (rows.length ? "\n" : "");
+}
+
+function rowsToCsv(rows) {
+  const header = LISTENING_EXPORT_COLUMNS.join(",");
+  const body = rows
+    .map((row) => LISTENING_EXPORT_COLUMNS.map((column) => csvCell(row[column])).join(","))
+    .join("\n");
+  return body ? `${header}\n${body}\n` : `${header}\n`;
+}
+
+function csvCell(value) {
+  if (value === null || value === undefined) {
+    return "";
+  }
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
 async function withResponseHeaders(response, request, config, options = {}) {
@@ -536,6 +1022,17 @@ function injectWebAnalytics(html, token) {
   return `${snippet}\n${html}`;
 }
 
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Content-Type-Options": "nosniff",
+    },
+  });
+}
+
 function buildErrorResponse(message) {
   return new Response(message, {
     status: 500,
@@ -596,6 +1093,20 @@ function normalizeEnum(value, allowedValues, fallback) {
 function normalizePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(String(value || ""), 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function normalizeBoolean(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+  const normalized = String(value).trim().toLowerCase();
+  if (["1", "true", "yes", "on"].includes(normalized)) {
+    return true;
+  }
+  if (["0", "false", "no", "off"].includes(normalized)) {
+    return false;
+  }
+  return fallback;
 }
 
 function escapeHtml(value) {

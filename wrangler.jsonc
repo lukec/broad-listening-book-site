@@ -20,6 +20,22 @@
         "limit": 10,
         "period": 60
       }
+    },
+    {
+      "name": "LISTENING_SUBMIT_RATE_LIMITER",
+      "namespace_id": "2026050301",
+      "simple": {
+        "limit": 12,
+        "period": 60
+      }
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "LISTENING_DB",
+      "database_name": "broad-listening-book-listening",
+      "database_id": "d314e0e4-a2fa-44dd-a71b-01420031f0a8",
+      "migrations_dir": "worker/migrations"
     }
   ],
   "vars": {
@@ -30,6 +46,8 @@
     "FIXED_USERNAME": "preview",
     "SESSION_COOKIE_NAME": "broad_listening_preview",
     "COOKIE_TTL_SECONDS": "2592000",
+    "LISTENING_ENABLED": "true",
+    "LISTENING_REQUIRE_TURNSTILE": "false",
     "CLOUDFLARE_WEB_ANALYTICS_TOKEN": "3afed4dd752a4b58952134d7b8140b6a"
   },
   "dev": {

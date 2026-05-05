@@ -4,6 +4,7 @@ src/broad_listening_book_site.egg-info/
 src/broad_listening_book_site/__pycache__/
 node_modules/
 .wrangler/
+listening-exports/
 .dev.vars
 .env
 .env.local

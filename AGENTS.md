@@ -21,6 +21,7 @@ Start with:
 3. this file
 4. `src/broad_listening_book_site/web_build.py`
 5. `src/broad_listening_book_site/server.py`
+6. `spec/LISTEN-PLAN.md` when reader-listening feedback is in scope
 
 When content or manuscript structure matters, read from the sibling repo:
 
@@ -34,6 +35,7 @@ This repo currently owns:
 - the multilingual HTML book builder
 - the local live-reload preview server
 - generation of the static site output in `./site`
+- the anonymous reader-listening UI, Worker API, D1 schema, and export helper
 
 This repo is also the planned home for:
 
@@ -47,6 +49,7 @@ This repo should not own:
 - copied manuscript source files
 - long-lived duplicate content
 - shared passwords, cookie secrets, API tokens, or Terraform state
+- raw reader-listening exports or private DD2030 digest artifacts
 - hidden deploy side effects that rebuild implicitly
 
 ## Current Layout
@@ -61,6 +64,10 @@ This repo should not own:
   generated output, ignored by git
 - `PLAN.md`
   launch and deployment plan, especially for Cloudflare architecture
+- `spec/LISTEN-PLAN.md`
+  reader-listening product spec, API shape, D1 schema, export model, and implementation phases
+- `worker/migrations/`
+  Cloudflare D1 migrations for Worker-owned storage
 
 If `worker/`, `infra/`, or `scripts/` are added, keep their responsibilities explicit and narrow rather than blending build, auth, and infrastructure concerns together.
 
@@ -118,10 +125,20 @@ When changing code in this repo, verify at the repo level when practical:
 
 - `uv sync`
 - `uv run broad-book-build`
+- `npm run d1:migrate:local`
+- `npm run preview:worker`
 - `uv run broad-book-site`
 - `curl http://127.0.0.1:8765/__health`
 
 If a change affects rendering, inspect the generated `site/` pages in a browser.
+
+When changing reader-listening behavior, also verify:
+
+- English and Japanese chapter selection menus show both share and listening actions
+- accepted submissions return `{"ok":true,...}`
+- blocked submissions return `{"ok":false,"code":"blocked_content"}`
+- `npm run listening:export -- --format jsonl` emits accepted local records
+- raw exports remain in ignored local paths such as `listening-exports/`
 
 When Worker and Terraform code are added, extend this section with exact verification commands instead of leaving them implicit.
 
