@@ -1972,6 +1972,15 @@ def fix_relative_assets(
                 repo_rel = ""
 
             published_candidate = output_root / repo_rel if repo_rel else None
+            if (
+                published_candidate is not None
+                and not published_candidate.exists()
+                and resolved.is_file()
+                and resolved.suffix.lower() != ".md"
+            ):
+                published_candidate.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(resolved, published_candidate)
+
             if published_candidate is not None and published_candidate.exists():
                 current_output_rel = output_path.relative_to(output_root).as_posix()
                 rewritten = relative_href(current_output_rel, repo_rel)

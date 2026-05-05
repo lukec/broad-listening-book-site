@@ -336,6 +336,8 @@ curl -sSI "https://broadlisteningbook.com${encoded_path}?deploy=${DEPLOY_TAG}" |
 curl -sSL "https://broadlisteningbook.com/en/about.html?deploy=${DEPLOY_TAG}" -o /tmp/blb-en-about.html
 curl -sSL "https://broadlisteningbook.com/ja/about.html?deploy=${DEPLOY_TAG}" -o /tmp/blb-ja-about.html
 rg 'https://dd2030.org/join-us|https://x.com/lukec' /tmp/blb-en-about.html /tmp/blb-ja-about.html
+
+npm run check:live-images -- --base-url https://broadlisteningbook.com
 ```
 
 Expected results:
@@ -345,6 +347,7 @@ Expected results:
 - The English index links to the deployed chapter.
 - A protected Japanese chapter redirects to `/login` with `X-Robots-Tag: noindex, nofollow, noarchive`.
 - English and Japanese About pages are public and include the DD2030 support link and `@lukec` link.
+- `check:live-images` reports zero broken image URLs across public crawlable pages. Protected or redirected pages are skipped unless you run the check in an authenticated context.
 - A reader-listening POST to `/api/listening/submit` accepts a valid anonymous response.
 - A reader-listening POST with blocked content returns `blocked_content`.
 - `npm run listening:export -- --remote --format jsonl` returns accepted listening records without committing the export.

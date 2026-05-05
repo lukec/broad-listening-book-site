@@ -149,6 +149,7 @@ After deploying to Cloudflare, run the `README.md` post-deploy validation checkl
 - public English page/index checks
 - protected Japanese redirect and `X-Robots-Tag` check
 - About page support-link checks
+- live image crawl with `npm run check:live-images`
 
 ## Editing Guidance
 

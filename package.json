@@ -9,6 +9,7 @@
     "build:site": "uv run broad-book-build",
     "preview:site": "uv run broad-book-site",
     "check:site": "node ./scripts/check-site-built.mjs",
+    "check:live-images": "node ./scripts/check-live-images.mjs",
     "preview:worker": "npm run check:site && wrangler dev",
     "deploy:worker": "npm run check:site && wrangler deploy",
     "d1:migrate:local": "wrangler d1 migrations apply broad-listening-book-listening --local",
