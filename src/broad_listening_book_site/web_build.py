@@ -1044,9 +1044,9 @@ td {
 .listening-dialog__panel {
   position: relative;
   width: min(100%, 72rem);
-  max-height: min(86vh, 76rem);
+  max-height: min(94dvh, 82rem);
   overflow: auto;
-  padding: clamp(1.8rem, 3vw, 3rem);
+  padding: clamp(1.4rem, 2.2vw, 2.4rem);
   border: 0.18rem solid rgb(var(--color-link));
   border-radius: 0.8rem;
   background: rgb(var(--color-background));
@@ -1073,19 +1073,21 @@ td {
 .listening-dialog__title {
   margin: 0;
   padding-right: 4.5rem;
-  font-size: var(--type-large);
+  font-size: clamp(2.5rem, 3vw, var(--type-large));
   line-height: 1.08;
 }
 
 .listening-dialog__intro {
-  margin: 0.85em 0 0;
-  font-size: var(--type-small);
+  margin: 0.6em 0 0;
+  font-size: var(--type-x-small);
   line-height: 1.35;
 }
 
 .listening-dialog__quote {
-  margin: 1.1em 0 0;
-  padding: 0.9em 1em;
+  max-height: 7.4rem;
+  margin: 0.75em 0 0;
+  padding: 0.7em 0.85em;
+  overflow: auto;
   border-left: 0.35rem solid rgb(var(--color-link));
   background: rgba(var(--color-text), 0.055);
   font-size: var(--type-x-small);
@@ -1094,8 +1096,8 @@ td {
 
 .listening-dialog__form {
   display: grid;
-  gap: 1.1em;
-  margin-top: 1.1em;
+  gap: 0.75em;
+  margin-top: 0.8em;
 }
 
 .listening-dialog__label,
@@ -1118,15 +1120,15 @@ td {
 .listening-dialog__lenses {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.55rem;
-  margin-top: 0.7em;
+  gap: 0.45rem;
+  margin-top: 0.55em;
 }
 
 .listening-dialog__lens {
   position: relative;
   display: inline-flex;
   align-items: center;
-  min-height: 3.4rem;
+  min-height: 3rem;
 }
 
 .listening-dialog__lens input {
@@ -1138,8 +1140,8 @@ td {
 .listening-dialog__lens span {
   display: inline-flex;
   align-items: center;
-  min-height: 3.4rem;
-  padding: 0.65em 0.85em;
+  min-height: 3rem;
+  padding: 0.55em 0.78em;
   border: 0.14rem solid rgba(var(--color-text), 0.38);
   border-radius: 1.7rem;
   font-family: ff-meta-web-pro, ff-meta-serif-web-pro, serif;
@@ -1158,9 +1160,9 @@ td {
 
 .listening-dialog__textarea {
   width: 100%;
-  min-height: 12rem;
-  margin-top: 0.55em;
-  padding: 0.85em 0.9em;
+  min-height: 8.8rem;
+  margin-top: 0.4em;
+  padding: 0.7em 0.8em;
   border: 0.16rem solid rgba(var(--color-text), 0.45);
   border-radius: 0.45rem;
   background: rgb(var(--color-background));
@@ -1236,7 +1238,7 @@ td {
 
   .listening-dialog__panel {
     width: 100%;
-    max-height: 88vh;
+    max-height: 94dvh;
     border-right: 0;
     border-bottom: 0;
     border-left: 0;
