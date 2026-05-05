@@ -1,7 +1,7 @@
 # Reader Listening Spec
 
-Status: v0 implemented locally
-Date: 2026-05-03
+Status: v0 shipped and deployed
+Date: 2026-05-05
 Repo: Broad Listening book site
 
 ## Summary
@@ -51,6 +51,38 @@ The feature should embody the book's own broad-listening principles:
 - Turnstile: supported server-side, disabled by default for launch.
 - Coarse location: store Cloudflare `client_country` when available, but never store raw IP addresses.
 - Export: provide both a local Wrangler-backed export script and protected HTTP export endpoints.
+
+## Current Implementation Status
+
+As of 2026-05-05, the v0 reader-listening feature is implemented, deployed, and committed to `main`.
+
+Production state:
+
+- Site: `https://broadlisteningbook.com`
+- Commit: `c7687b8 Add reader listening feedback flow`
+- Last verified deployed Worker version: `00243ee4-1404-4b27-864a-eb43e275cb91`
+- Production D1 database: `broad-listening-book-listening`
+- Production D1 database id: `d314e0e4-a2fa-44dd-a71b-01420031f0a8`
+- D1 migration `0001_listening_responses.sql` has been applied remotely.
+- `LISTENING_EXPORT_TOKEN` is configured as a Cloudflare Worker secret.
+- `LISTENING_REQUIRE_TURNSTILE=false` for launch.
+
+Implemented behavior:
+
+- English and Japanese chapter pages expose `Share passage` and `Contribute a perspective` when readers highlight text.
+- The listening dialog submits anonymous, passage-linked responses to `/api/listening/submit`.
+- Server-side validation, normalization, deterministic moderation, rate limiting, and the feature kill switch are implemented in the Worker.
+- Accepted responses are stored in Cloudflare D1.
+- Export is available through `scripts/export-listening.mjs` and protected HTTP endpoints.
+- The web-only “Features of the Web Book” section is injected into the “How to Read This Book” pages during the site build, not into the manuscript repo.
+- The injected section now appears last in that chapter and uses broad-listening language.
+
+Not implemented yet:
+
+- A repeatable DD2030 digest/report generator.
+- Any automated DD2030 sharing workflow.
+- Turnstile UI integration, because Turnstile is supported server-side but disabled for launch.
+- A reviewed final pass on Japanese listening UI copy by a fluent editor.
 
 ## Reader Experience
 
@@ -131,9 +163,9 @@ Blocked:
 This response cannot be accepted because it appears to include obscene, abusive, spammy, or unsafe content.
 ```
 
-### Japanese UI Copy Draft
+### Japanese UI Copy
 
-These strings should be reviewed by a fluent Japanese editor before launch.
+These strings are live in v0. They should still receive a fluent Japanese editorial review before the feature is promoted more broadly.
 
 Selection action:
 
@@ -214,7 +246,7 @@ Blocked:
 
 Store one row per submitted response.
 
-Suggested D1 table:
+Implemented D1 table:
 
 ```sql
 CREATE TABLE listening_responses (
@@ -344,13 +376,12 @@ CSV should preserve the same core fields, with JSON-sensitive fields escaped saf
 
 Export endpoints must not be public.
 
-Acceptable v0 options:
+Implemented v0:
 
-1. Require the existing signed preview session and an additional `EXPORT_TOKEN` secret.
-2. Require only an `EXPORT_TOKEN` secret sent as a bearer token.
-3. Skip HTTP export in v0 and use `wrangler d1 execute` plus a local export script.
-
-Recommended v0: implement a local export script first, then add protected HTTP export only when needed.
+- HTTP exports require `Authorization: Bearer <LISTENING_EXPORT_TOKEN>`.
+- The export token is stored as a Cloudflare Worker secret.
+- Local operators can also export through `npm run listening:export`, which uses Wrangler/D1 access instead of the HTTP token.
+- Raw exports should go to `listening-exports/` or another ignored local path and must not be committed.
 
 ## Moderation
 
@@ -403,7 +434,7 @@ TURNSTILE_SECRET_KEY=<secret, only if enabled>
 
 ## Cost Notes
 
-Pricing should be rechecked before launch because Cloudflare pricing can change.
+Pricing should be rechecked before material traffic changes because Cloudflare pricing can change.
 
 As checked on 2026-05-03:
 
@@ -465,12 +496,14 @@ Potential downstream ingestion modes:
 
 ## Manual DD2030 Sharing Workflow
 
-V0 can be manual:
+Current v0 can be manual:
 
-1. Export accepted JSONL.
-2. Run a local digest script.
-3. Review the digest and selected anonymized examples.
+1. Export accepted JSONL or CSV.
+2. Review and analyze the export locally or in another analysis tool.
+3. Prepare a reviewed digest with selected anonymized examples.
 4. Share the reviewed digest with DD2030.
+
+A dedicated digest script is not implemented yet.
 
 Suggested digest sections:
 
@@ -509,9 +542,8 @@ Local verification should include:
 ```sh
 uv sync
 uv run broad-book-build
-npm run worker:dry-run
-npm run worker:dev
-curl http://127.0.0.1:8787/api/listening/submit
+npm run d1:migrate:local
+npm run preview:worker
 ```
 
 Rendering verification:
@@ -523,24 +555,42 @@ Rendering verification:
 - Submit an obscene/unsafe test response and confirm it is blocked.
 - Confirm the existing GitHub Issues feedback pages still work and are not conflated with listening responses.
 
-Post-deploy verification should be added to `README.md` once the feature ships.
+Syntax and formatting verification:
+
+```sh
+git diff --check
+node --check worker/src/index.js
+node --check worker/src/listeningModeration.js
+node --check scripts/export-listening.mjs
+.venv/bin/python -m py_compile src/broad_listening_book_site/web_build.py
+```
+
+Post-deploy verification is documented in `README.md` and now includes listening-specific checks:
+
+- live chapter pages include the selection action menu and listening dialog strings
+- a valid production submission returns `{ "ok": true, "id": "lr_..." }`
+- blocked content returns `blocked_content`
+- unauthenticated HTTP export returns `401`
+- `npm run listening:export -- --remote --format jsonl` can read accepted production rows
+- smoke-test rows should be deleted after verification unless intentionally kept
 
 ## Remaining Open Questions
 
-- Should Turnstile be enabled after launch, or only after the first spam signal?
-- Should the Japanese UI copy be reviewed in the manuscript repo, this repo, or directly with DD2030?
+- Should Turnstile be enabled only after the first spam signal, or proactively before broader public sharing?
+- Who should review the Japanese UI copy, and where should that review be captured?
 - Should a digest script live in this repo if it creates private outputs, or should it only emit local ignored files?
+- What should the first DD2030 digest format look like once real responses exist?
 
 ## Implementation Steps And Phases
 
-### Phase 0: Spec And Design Lock
+### Phase 0: Spec And Design Lock - Complete
 
 - Finalize this spec.
-- Confirm Japanese copy.
-- Decide whether Turnstile is enabled at launch or delayed.
-- Decide whether `client_country` is stored.
+- Decide whether Turnstile is enabled at launch or delayed. Decision: delayed; server support exists, launch default is disabled.
+- Decide whether `client_country` is stored. Decision: yes, when Cloudflare provides it, as rough operational context.
+- Confirm Japanese copy enough for v0 launch. Follow-up fluent review remains open.
 
-### Phase 1: Static UI
+### Phase 1: Static UI - Complete
 
 - Extend the existing selection popover in `src/broad_listening_book_site/web_build.py`.
 - Add `Contribute a perspective` beside the existing native share action.
@@ -548,8 +598,9 @@ Post-deploy verification should be added to `README.md` once the feature ships.
 - Add localized UI strings.
 - Add client-side validation for length and required fields.
 - Preserve the existing native share behavior.
+- Inject “Features of the Web Book” into the generated web edition only, as the last section of “How to Read This Book”.
 
-### Phase 2: Worker API And D1 Storage
+### Phase 2: Worker API And D1 Storage - Complete
 
 - Add D1 binding to `wrangler.jsonc`.
 - Add a D1 migration for `listening_responses`.
@@ -558,15 +609,16 @@ Post-deploy verification should be added to `README.md` once the feature ships.
 - Add environment flags for enabling/disabling the feature.
 - Keep secrets out of git.
 
-### Phase 3: Export
+### Phase 3: Export - Complete
 
 - Add a local export script for accepted responses.
 - Emit JSONL as the canonical full-fidelity format.
 - Emit CSV for spreadsheet review.
 - Document the export command in `README.md`.
 - Keep exported data ignored by git.
+- Add protected HTTP export endpoints for JSONL and CSV.
 
-### Phase 4: End-To-End QA
+### Phase 4: End-To-End QA - Complete
 
 - Build the site locally.
 - Run the Worker locally with D1.
@@ -576,7 +628,7 @@ Post-deploy verification should be added to `README.md` once the feature ships.
 - Inspect desktop and mobile rendering.
 - Update `README.md` and `AGENTS.md` verification notes if needed.
 
-### Phase 5: Manual Launch
+### Phase 5: Manual Launch - Complete
 
 - Create production D1 database.
 - Apply D1 migration.
@@ -584,8 +636,9 @@ Post-deploy verification should be added to `README.md` once the feature ships.
 - Deploy Worker manually with Wrangler.
 - Run the existing post-deploy checklist.
 - Add listening-specific checks to the post-deploy report.
+- Commit and push the feature to `origin/main`.
 
-### Phase 6: DD2030 Digest
+### Phase 6: DD2030 Digest - Not Started
 
 - Export accepted responses for a date range.
 - Generate a reviewed digest from JSONL.
