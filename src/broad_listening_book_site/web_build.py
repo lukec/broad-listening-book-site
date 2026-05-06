@@ -43,6 +43,51 @@ TRANSLATION_NOTE_TEXT = (
     "Translation note (English edition): Original Japanese authorship is preserved "
     "throughout this book. Any errors in the English translation are the translator’s own."
 )
+ASAHI_EXTERNAL_IMAGE_NOTICE = {
+    "en": "Figure available in the source article off site.",
+    "ja": "この図は外部の元記事で見ることができます。",
+}
+ASAHI_EXTERNAL_IMAGE_ARIA_LABEL = {
+    "en": "Figure available in the source article off site",
+    "ja": "外部の元記事で見られる図",
+}
+ASAHI_EXTERNAL_IMAGE_LINKS: dict[str, tuple[str, dict[str, str]]] = {
+    "images/04_04_消費税減税SNS散布図.png": (
+        "https://www.asahi.com/articles/AST5Q3DZ4T5QUTFK001M.html",
+        {
+            "en": "View the Asahi source article for the consumption-tax SNS analysis",
+            "ja": "消費税減税SNS分析の朝日新聞記事を見る",
+        },
+    ),
+    "images/04_04_参院選SNS意見分布.png": (
+        "https://www.asahi.com/articles/AST7441D7T74ULLI00HM.html",
+        {
+            "en": "View the Asahi source article for the House of Councillors election SNS analysis",
+            "ja": "参院選SNS分析の朝日新聞記事を見る",
+        },
+    ),
+    "images/04_04_参院選投票日直前SNS意見分布.png": (
+        "https://www.asahi.com/articles/AST7Z2BVZT7ZULLI008M.html",
+        {
+            "en": "View the Asahi source article for the pre-voting-day House of Councillors election SNS analysis",
+            "ja": "参院選投票日直前SNS分析の朝日新聞記事を見る",
+        },
+    ),
+    "images/04_04_万博SNS分析_前期.png": (
+        "https://withnews.jp/article/f0251026001qq000000000000000W0jf10201qq000028332A",
+        {
+            "en": "View the withnews source article for the first-period Osaka Expo SNS analysis",
+            "ja": "大阪万博SNS分析（前期）のwithnews記事を見る",
+        },
+    ),
+    "images/04_04_万博SNS分析_後期.png": (
+        "https://withnews.jp/article/f0251026001qq000000000000000W0jf10201qq000028332A",
+        {
+            "en": "View the withnews source article for the second-period Osaka Expo SNS analysis",
+            "ja": "大阪万博SNS分析（後期）のwithnews記事を見る",
+        },
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -875,6 +920,42 @@ td {
 .chapter table,
 .chapter img {
   max-width: min(100%, 46em);
+}
+
+.chapter .offsite-figure {
+  display: block;
+  box-sizing: border-box;
+  max-width: min(100%, 46em);
+  margin: 1em 0 0 0;
+  padding: 1em;
+  border: 0.1rem solid rgba(var(--color-text), 0.22);
+  border-left: 0.35rem solid rgb(var(--color-link));
+  background: rgba(var(--color-link), 0.045);
+}
+
+.offsite-figure__notice {
+  display: block;
+  color: rgba(var(--color-text), 0.68);
+  font-size: var(--type-small);
+  line-height: 1.35;
+}
+
+.offsite-figure__link {
+  display: block;
+  margin-top: 0.45em;
+  font-size: var(--type-medium);
+  font-weight: bold;
+  line-height: 1.35;
+}
+
+.offsite-figure__caption {
+  display: block;
+  margin-top: 0.8em;
+  padding-top: 0.75em;
+  border-top: 0.1rem solid rgba(var(--color-text), 0.16);
+  color: rgba(var(--color-text), 0.72);
+  font-size: var(--type-small);
+  line-height: 1.45;
 }
 
 .chapter > :first-child {
@@ -1800,6 +1881,101 @@ def linkify_html(html_text: str) -> str:
     return "".join(parser.output)
 
 
+def asahi_external_image_link_html(src: str, alt: str, lang_code: str) -> str:
+    url, labels = ASAHI_EXTERNAL_IMAGE_LINKS[src]
+    notice = ASAHI_EXTERNAL_IMAGE_NOTICE.get(lang_code, ASAHI_EXTERNAL_IMAGE_NOTICE["en"])
+    aria_label = ASAHI_EXTERNAL_IMAGE_ARIA_LABEL.get(
+        lang_code, ASAHI_EXTERNAL_IMAGE_ARIA_LABEL["en"]
+    )
+    label = labels.get(lang_code, labels["en"])
+    caption_html = ""
+    if alt:
+        caption_html = (
+            f'<span class="offsite-figure__caption">{html.escape(alt)}</span>'
+        )
+
+    return (
+        '<span class="offsite-figure" role="group" '
+        f'aria-label="{html.escape(aria_label, quote=True)}">'
+        '<span class="offsite-figure__notice">'
+        f"{html.escape(notice)}"
+        "</span>"
+        f'<a class="offsite-figure__link" href="{html.escape(url, quote=True)}" '
+        f'target="_blank" rel="noopener noreferrer">{html.escape(label)}</a>'
+        f"{caption_html}"
+        "</span>"
+    )
+
+
+class AsahiExternalImageHTMLParser(HTMLParser):
+    def __init__(self, lang_code: str) -> None:
+        super().__init__(convert_charrefs=False)
+        self.output: list[str] = []
+        self.lang_code = lang_code
+
+    def _attrs_to_text(self, attrs: list[tuple[str, str | None]]) -> str:
+        rendered = []
+        for key, value in attrs:
+            if value is None:
+                rendered.append(f" {key}")
+            else:
+                rendered.append(f' {key}="{html.escape(value, quote=True)}"')
+        return "".join(rendered)
+
+    def _replacement_html(self, attrs: list[tuple[str, str | None]]) -> str | None:
+        attr_map = {key.lower(): value for key, value in attrs}
+        src = attr_map.get("src") or ""
+        if src not in ASAHI_EXTERNAL_IMAGE_LINKS:
+            return None
+        return asahi_external_image_link_html(
+            src, attr_map.get("alt") or "", self.lang_code
+        )
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "img":
+            replacement_html = self._replacement_html(attrs)
+            if replacement_html is not None:
+                self.output.append(replacement_html)
+                return
+        self.output.append(f"<{tag}{self._attrs_to_text(attrs)}>")
+
+    def handle_endtag(self, tag: str) -> None:
+        self.output.append(f"</{tag}>")
+
+    def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag.lower() == "img":
+            replacement_html = self._replacement_html(attrs)
+            if replacement_html is not None:
+                self.output.append(replacement_html)
+                return
+        self.output.append(f"<{tag}{self._attrs_to_text(attrs)} />")
+
+    def handle_data(self, data: str) -> None:
+        self.output.append(data)
+
+    def handle_entityref(self, name: str) -> None:
+        self.output.append(f"&{name};")
+
+    def handle_charref(self, name: str) -> None:
+        self.output.append(f"&#{name};")
+
+    def handle_comment(self, data: str) -> None:
+        self.output.append(f"<!--{data}-->")
+
+    def handle_decl(self, decl: str) -> None:
+        self.output.append(f"<!{decl}>")
+
+    def handle_pi(self, data: str) -> None:
+        self.output.append(f"<?{data}>")
+
+
+def replace_asahi_external_images(html_text: str, lang_code: str) -> str:
+    parser = AsahiExternalImageHTMLParser(lang_code)
+    parser.feed(html_text)
+    parser.close()
+    return "".join(parser.output)
+
+
 def strip_tags(fragment: str) -> str:
     return re.sub(r"<[^>]+>", "", fragment).strip()
 
@@ -2150,6 +2326,7 @@ def build_chapters(
         if config.code == "en" and relative_path in {"11_01_taiwan.md", "11_05_harnessing_connective_action.md"}:
             html_body = style_g0v_wordmark(html_body)
         html_body = inject_web_book_features(html_body, config, relative_path)
+        html_body = replace_asahi_external_images(html_body, config.code)
         html_body = fix_relative_assets(
             html_text=html_body,
             repo_root=repo_root,
